@@ -378,15 +378,15 @@ test('tap moves the cursor', () => {
   assert.equal(m.phase, 'menu');
 });
 
-test('58005 = triggers the easter egg, nothing else does', () => {
-  const c = calc('58005 eq');
+test('58008 = triggers the easter egg, nothing else does', () => {
+  const c = calc('58008 eq');
   assert.equal(c.phase, 'result');
   assert.ok(isEasterEgg(c.lastTokens));
   c.press('eq'); // = again re-runs the same calculation
   assert.ok(isEasterEgg(c.lastTokens));
   assert.ok(!isEasterEgg(calc('5800 eq').lastTokens));
-  assert.ok(!isEasterEgg(calc('58005 add 0 eq').lastTokens));
-  assert.ok(!isEasterEgg(calc('58005 dot eq').lastTokens));
-  assert.ok(!isEasterEgg(calc('580050 eq').lastTokens));
+  assert.ok(!isEasterEgg(calc('58008 add 0 eq').lastTokens));
+  assert.ok(!isEasterEgg(calc('58008 dot eq').lastTokens));
+  assert.ok(!isEasterEgg(calc('580080 eq').lastTokens));
   assert.ok(!isEasterEgg(null));
 });

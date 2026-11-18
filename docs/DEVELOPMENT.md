@@ -63,7 +63,7 @@ Only linear regression is supported in REG mode (no Log/Exp/Pwr/Inv/Quad).
 
 ## Easter egg
 
-Typing `58005` and pressing `=` plays a MLG montage over the calculator (about 6.6 s, the length of the dubstep clip): a sniper scope, hitmarkers, flying chips, cans and frogs, and meme text. Tap the screen or press Esc to end it early. The sounds are your own MP3 clips in `assets/mlg/`, and [assets/mlg/README.md](../assets/mlg/README.md) lists the expected file names and format. Missing clips are skipped, silence at the start of a clip is trimmed, and clip loudness is levelled automatically. The timing of each clip is the `SOUNDS` table in `js/easter.js`, and the visuals take their cue times from it. With reduced motion turned on, the shake, flashes and spinning are dropped.
+Typing `58008` and pressing `=` plays a MLG montage over the calculator (about 6.6 s, the length of the dubstep clip): a sniper scope, hitmarkers, flying chips, cans and frogs, and meme text. Tap the screen or press Esc to end it early. The sounds are your own MP3 clips in `assets/mlg/`, and [assets/mlg/README.md](../assets/mlg/README.md) lists the expected file names and format. Missing clips are skipped, silence at the start of a clip is trimmed, and clip loudness is levelled automatically. The timing of each clip is the `SOUNDS` table in `js/easter.js`, and the visuals take their cue times from it. With reduced motion turned on, the shake, flashes and spinning are dropped.
 
 ## Code layout
 
@@ -74,7 +74,7 @@ js/keys.js                     key layout and touch handling
 js/calculator.js               calculator state machine (modes, cursor, memory, replay, stats)
 js/layout.js                   natural-display layout: tokens → dot-grid drawing ops + cursor positions
 js/display.js, js/font.js      canvas LCD: indicator row + one 72-dot-wide matrix (5×7 font); tap hit-testing
-js/easter.js                   58005 = easter egg (MLG montage overlay); clips in assets/mlg/
+js/easter.js                   58008 = easter egg (MLG montage overlay); clips in assets/mlg/
 js/engine/                     lexer, parser, evaluator, exact fractions, number formatting, stats
 sw.js, manifest.webmanifest    offline cache and installable-app metadata
 tests/                         engine, layout and key-sequence tests

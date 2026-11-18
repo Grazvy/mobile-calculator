@@ -1,6 +1,6 @@
 # Easter egg clips
 
-Type `58005` and press `=` to start the MLG montage ([js/easter.js](../../js/easter.js)). It runs as long as `dubstep.mp3` (about 6.6 s). The sounds come from the files in this folder. Any clip that's missing is skipped and the visuals play without it.
+Type `58008` and press `=` to start the MLG montage ([js/easter.js](../../js/easter.js)). It runs as long as `dubstep.mp3` (about 6.6 s). The sounds come from the files in this folder. Any clip that's missing is skipped and the visuals play without it.
 
 | File | Plays at (s) | How much plays |
 |---|---|---|

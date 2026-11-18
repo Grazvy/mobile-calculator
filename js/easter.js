@@ -1,8 +1,8 @@
-// Easter egg: type 58005 and press = for a MLG montage over the calculator, as long as the
+// Easter egg: type 58008 and press = for a MLG montage over the calculator, as long as the
 // dubstep clip (~6.6 s). Sounds are the user's own clips in assets/mlg/ (see the README there);
 // missing clips are skipped. Nothing here touches the DOM until it is played, so tests can import it.
 
-const CODE = '58005';
+const CODE = '58008';
 const CLIP_DIR = 'assets/mlg/';
 export const DURATION = 6.6; // seconds: the length of dubstep.mp3
 const FADE_AT = 6.2; // visuals start fading out
@@ -12,7 +12,7 @@ const TARGET_RMS = 0.2; // clips are levelled to this loudness (about -14 dBFS) 
 const DUCK = 0.25; // the music drops to this while a voice line plays
 const EDGE = 0.06; // fade at a cut, so clips never click
 
-/** True for exactly 58005 (the calculation just run, or the line being typed). */
+/** True for exactly 58008 (the calculation just run, or the line being typed). */
 export function isEasterEgg(tokens) {
   return Array.isArray(tokens) && tokens.join('') === CODE;
 }
@@ -203,7 +203,7 @@ function clip(name) {
   return clips.get(name);
 }
 
-/** Start fetching and decoding the clips (call once 58005 has been typed, before =). */
+/** Start fetching and decoding the clips (call once 58008 has been typed, before =). */
 export function preloadEasterEgg() {
   if (!audioContext()) return;
   for (const s of SOUNDS) clip(s.clip);
