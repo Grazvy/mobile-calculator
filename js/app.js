@@ -1,6 +1,7 @@
 import { Calculator } from './calculator.js';
 import { LcdRenderer, viewText } from './display.js';
 import { buildKeypad, KEYBOARD } from './keys.js';
+import { easterEggPlaying, isEasterEgg, playEasterEgg, preloadEasterEgg, stopEasterEgg } from './easter.js';
 
 function safeStorage() {
   try {
@@ -53,6 +54,11 @@ function press(id) {
   lcd.follow();
   restartBlink();
   render();
+  if (id === 'eq' && calc.phase === 'result' && isEasterEgg(calc.lastTokens)) {
+    playEasterEgg({ calcEl: document.getElementById('calc'), lcdEl: canvas.parentElement });
+  } else if (calc.phase === 'edit' && isEasterEgg(calc.buf)) {
+    preloadEasterEgg(); // decode the clips while the finger moves to =, so the first sounds are on time
+  }
 }
 
 buildKeypad(document.getElementById('keys'), (id) => {
@@ -115,6 +121,12 @@ canvas.addEventListener(
 
 window.addEventListener('keydown', (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (easterEggPlaying()) {
+    // the keypad is covered while the easter egg plays; Esc ends it early
+    e.preventDefault();
+    if (e.key === 'Escape') stopEasterEgg();
+    return;
+  }
   const k = KEYBOARD[e.key];
   if (!k) return;
   e.preventDefault();

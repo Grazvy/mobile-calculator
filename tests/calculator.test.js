@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Calculator } from '../js/calculator.js';
 import { lowerText } from '../js/engine/format.js';
 import { layoutExpr } from '../js/layout.js';
+import { isEasterEgg } from '../js/easter.js';
 
 const layoutCaret = (c) => layoutExpr(c.buf).carets.find((k) => k.index === c.cur);
 
@@ -375,4 +376,17 @@ test('tap moves the cursor', () => {
   const m = calc('mode');
   m.tap(0);
   assert.equal(m.phase, 'menu');
+});
+
+test('58005 = triggers the easter egg, nothing else does', () => {
+  const c = calc('58005 eq');
+  assert.equal(c.phase, 'result');
+  assert.ok(isEasterEgg(c.lastTokens));
+  c.press('eq'); // = again re-runs the same calculation
+  assert.ok(isEasterEgg(c.lastTokens));
+  assert.ok(!isEasterEgg(calc('5800 eq').lastTokens));
+  assert.ok(!isEasterEgg(calc('58005 add 0 eq').lastTokens));
+  assert.ok(!isEasterEgg(calc('58005 dot eq').lastTokens));
+  assert.ok(!isEasterEgg(calc('580050 eq').lastTokens));
+  assert.ok(!isEasterEgg(null));
 });
