@@ -53,9 +53,9 @@ body {
   flex-direction: column;
   padding:
     calc(env(safe-area-inset-top, 0px) + 1.6dvh)
-    calc(env(safe-area-inset-right, 0px) + 3.6cqw)
+    calc(env(safe-area-inset-right, 0px) + 1.2cqw)
     calc(env(safe-area-inset-bottom, 0px) + 1.8dvh)
-    calc(env(safe-area-inset-left, 0px) + 3.6cqw);
+    calc(env(safe-area-inset-left, 0px) + 1.2cqw);
   background:
     radial-gradient(120% 40% at 50% 0%, rgba(255, 255, 255, 0.07), transparent 70%),
     linear-gradient(180deg, var(--body-top), var(--body-bottom));

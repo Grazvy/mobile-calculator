@@ -1,6 +1,6 @@
 // Offline support: precache the whole app, then serve it cache-first.
 // Bump VERSION whenever any file changes so phones pick up the new build.
-const VERSION = 'sc82-v1';
+const VERSION = 'sc82-v2';
 
 const ASSETS = [
   './',
