@@ -2,6 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Calculator } from '../js/calculator.js';
 import { lowerText } from '../js/engine/format.js';
+import { layoutExpr } from '../js/layout.js';
+
+const layoutCaret = (c) => layoutExpr(c.buf).carets.find((k) => k.index === c.cur);
 
 class MemStorage {
   constructor() { this.m = new Map(); }
@@ -256,18 +259,76 @@ test('x^, x², x⁻¹, x! with nothing before them get an empty base box', () =>
   const p = calc('pow');
   assert.deepEqual(p.buf, ['tBase', 'tEnd', 'tPow', 'tEnd']);
   assert.equal(p.cur, 1); // cursor in the base box
-  assert.equal(lower(calc('pow 2 right right 10 eq')), '1024.'); // ▶ stops after the base, then enters the exponent
+  assert.equal(lower(calc('pow 2 right 10 eq')), '1024.'); // ▶ goes from the base straight into the exponent
   const s = calc('add sq');
-  assert.deepEqual(s.buf, ['add', 'tBase', 'tEnd', 'sq']);
-  assert.equal(s.cur, 2);
+  assert.deepEqual(s.buf, ['add', 'tBase', 'tEnd', 'tPow', '2', 'tEnd']);
+  assert.equal(s.cur, 2); // cursor in the base box
   assert.equal(lower(calc('sq 3 eq')), '9.');
   assert.equal(lower(calc('sq 1 add 2 eq')), '9.'); // the base box is one value: (1+2)²
   assert.equal(lower(calc('shift inv 4 eq')), '24.');
   // after a value: unchanged
-  assert.deepEqual(calc('3 sq').buf, ['3', 'sq']);
+  assert.deepEqual(calc('3 sq').buf, ['3', 'tPow', '2', 'tEnd']);
   assert.deepEqual(calc('3 pow').buf, ['3', 'tPow', 'tEnd']);
   assert.deepEqual(calc('lp 3 rp pow').buf, ['lp', '3', 'rp', 'tPow', 'tEnd']);
-  assert.deepEqual(calc('5 eq sq').buf, ['ans', 'sq']); // after a result: Ans²
+  assert.deepEqual(calc('5 eq sq').buf, ['ans', 'tPow', '2', 'tEnd']); // after a result: Ans²
+});
+
+test('base box: leaving it and coming back still edits the box', () => {
+  // □² at the start, move away and back (▶▶◀◀, or ▶ around the end), then type: into the box
+  const inBox = ['tBase', '3', 'tEnd', 'tPow', '2', 'tEnd'];
+  assert.deepEqual(calc('sq right right left left 3').buf, inBox);
+  assert.deepEqual(calc('sq right right right right right 3').buf, inBox); // wrapped past the end
+  const t = calc('sq right right');
+  t.tap(0); // tapping the box, on the gap just before it
+  t.press('3');
+  assert.deepEqual(t.buf, inBox);
+  assert.equal(lower(calc('sq right right left left 3 eq')), '9.');
+  // after an operator, too
+  assert.equal(lower(calc('1 add sq right right left left 3 eq')), '10.');
+  // once filled with a number and left, the box dissolves into plain 3²
+  const d = calc('sq 3 right right');
+  assert.deepEqual(d.buf, ['3', 'tPow', '2', 'tEnd']);
+  // ... so typing in front of it no longer lands in the box
+  assert.equal(lower(calc('sq 3 right right left left left 2 add eq')), '11.'); // 2+3²
+  // a longer base keeps its box (shown in brackets)
+  assert.deepEqual(calc('sq 1 add 2 right right').buf, ['tBase', '1', 'add', '2', 'tEnd', 'tPow', '2', 'tEnd']);
+});
+
+test('every ◀▶ press moves the cursor visibly', () => {
+  for (const seq of ['sq', 'pow', 'shift frac', '2 add sq', 'sq 3', 'shift frac 1 right 2 right 3']) {
+    // no two consecutive positions share a spot on screen
+    for (const dir of ['right', 'left']) {
+      const c2 = calc(seq);
+      for (let k = 0; k < c2.buf.length + 2; k++) {
+        const before = layoutCaret(c2);
+        c2.press(dir);
+        const after = layoutCaret(c2);
+        assert.ok(before.x !== after.x || before.base !== after.base, `${seq}: ${dir} did not move`);
+      }
+    }
+  }
+});
+
+test('DEL in an empty base box removes the whole □²', () => {
+  for (const seq of ['sq', 'shift sq', 'inv', 'shift inv', 'pow']) {
+    const c = calc(`1 add ${seq} del`);
+    assert.deepEqual(c.buf, ['1', 'add'], seq);
+  }
+  // a typed exponent survives as plain digits
+  assert.deepEqual(calc('pow right right 4 left left left del').buf, ['4']);
+});
+
+test('x², x³ and x⁻¹ are powers with an editable exponent', () => {
+  const c = calc('3 sq');
+  assert.equal(c.cur, 4); // cursor after the power, so typing carries on outside it
+  assert.equal(lower(calc('3 sq add 1 eq')), '10.');
+  assert.deepEqual(calc('2 shift sq').buf, ['2', 'tPow', '3', 'tEnd']);
+  assert.deepEqual(calc('4 inv').buf, ['4', 'tPow', 'sub', '1', 'tEnd']);
+  assert.equal(lower(calc('4 inv eq')), '0.25');
+  // replace the 2 of x² with a 3: ◀ into the exponent, DEL, type 3
+  assert.equal(lower(calc('2 sq left del 3 eq')), '8.');
+  // and the -1 of x⁻¹ with -2
+  assert.equal(lower(calc('2 inv left del 2 eq')), '0.25');
 });
 
 test('templates: empty slot, delete, overwrite', () => {

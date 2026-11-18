@@ -1,6 +1,6 @@
 // Offline support: precache the whole app, then serve it cache-first.
 // Bump VERSION whenever any file changes so phones pick up the new build.
-const VERSION = 'fx85-v8';
+const VERSION = 'fx85-v10';
 
 const ASSETS = [
   './',

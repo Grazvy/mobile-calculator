@@ -29,8 +29,10 @@ const SHIFT_TEMPLATE = { sqrt: 'tCbrt', pow: 'tRoot', log: 'tTenx', ln: 'tEx' };
 // templates whose first slot takes the number typed just before the key
 const CAPTURE = new Set(['tFrac', 'tMixed', 'tRoot']);
 const isNumberTok = (t) => DIGIT_KEYS.has(t) || t === '.' || t === 'EE';
-// postfix keys that get an empty base box (□², □!) when no value comes before them
-const NEEDS_BASE = new Set(['sq', 'cube', 'inv', 'fact']);
+// postfix keys that get an empty base box (□!) when no value comes before them
+const NEEDS_BASE = new Set(['fact']);
+// x², x³ and x⁻¹ insert an x^□ power with the exponent filled in, so it can be edited
+const POW_PRESET = { sq: ['2'], cube: ['3'], inv: ['sub', '1'] };
 
 const ZERO = Fraction.of(0);
 const isF = (v) => v instanceof Fraction;
@@ -167,6 +169,7 @@ export class Calculator {
 
   press(key) {
     this.dispatch(key);
+    if (this.phase === 'edit') this.tidy();
     this.save();
   }
 
@@ -297,6 +300,7 @@ export class Calculator {
   }
 
   insert(tok) {
+    if (POW_PRESET[tok]) return this.insertPower(POW_PRESET[tok]);
     if (this.phase === 'result') {
       const chain = BINARY.has(tok) || POSTFIX.has(tok);
       this.buf = chain ? ['ans', tok] : [tok];
@@ -308,7 +312,7 @@ export class Calculator {
       return;
     }
     if (NEEDS_BASE.has(tok) && !this.hasOperandBefore()) {
-      // nothing to apply x², x⁻¹ ... to: insert an empty base box and move into it
+      // nothing to apply x! to: insert an empty base box and move into it
       if (this.buf.length + 3 > MAX_TOKENS) return;
       this.buf.splice(this.cur, 0, 'tBase', 'tEnd', tok);
       this.cur++;
@@ -352,6 +356,19 @@ export class Calculator {
     this.cur += captured.length ? captured.length + 2 : 1;
   }
 
+  /**
+   * x², x³, x⁻¹: a power whose exponent is already filled in. The cursor ends up
+   * after it (or in an empty base box when there is nothing to raise).
+   */
+  insertPower(exponent) {
+    const pow = ['tPow', ...exponent, 'tEnd'];
+    if (this.phase === 'result') return this.startLine(['ans', ...pow], pow.length + 1);
+    const base = this.hasOperandBefore() ? [] : ['tBase', 'tEnd'];
+    if (this.buf.length + base.length + pow.length > MAX_TOKENS) return;
+    this.buf.splice(this.cur, 0, ...base, ...pow);
+    this.cur += base.length ? 1 : pow.length;
+  }
+
   /** True when the token before the cursor ends a value (a number, Ans, ")", x², a template...). */
   hasOperandBefore() {
     const t = this.buf[this.cur - 1];
@@ -384,9 +401,31 @@ export class Calculator {
       this.cur = at; // step into the template's last slot instead of deleting it
       return;
     }
+    if (t === 'tBase' && buf[at + 1] === 'tEnd') return this.dropEmptyBase(at);
     if (TEMPLATE_START.has(t) || t === 'tSep') return this.unwrap(at);
     buf.splice(at, 1);
     if (at < this.cur) this.cur--;
+  }
+
+  /**
+   * DEL on an empty base box (□², □^□, □!): a power without a base means nothing,
+   * so the x², x⁻¹, x! or empty ^□ attached to it goes too. An exponent the user typed
+   * is kept as plain text, like unwrapping any other template.
+   */
+  dropEmptyBase(at) {
+    const buf = this.buf;
+    let end = at + 2; // first index after the empty base
+    let keep = [];
+    if (POSTFIX.has(buf[end])) end++;
+    else if (buf[end] === 'tPow') {
+      const e = this.templateMarks(end)[1];
+      const inner = buf.slice(end + 1, e);
+      const preset = Object.values(POW_PRESET).some((p) => p.join() === inner.join());
+      if (!preset) keep = inner;
+      end = e + 1;
+    }
+    buf.splice(at, end - at, ...keep);
+    this.cur = at;
   }
 
   /** Marker indices [start, ...separators, end] of the template that owns the marker at `at`. */
@@ -438,10 +477,18 @@ export class Calculator {
       return this.replay(key === 'up' ? -1 : 1);
     }
     const n = this.buf.length;
-    // like natural-display Casios: ◀ at the start wraps to the end and ▶ at the end to the start
-    if (key === 'left') this.cur = this.cur > 0 ? this.cur - 1 : n;
-    else if (key === 'right') this.cur = this.cur < n ? this.cur + 1 : 0;
-    else if (this.buf.length === 0) this.replay(key === 'up' ? -1 : 1);
+    if (key === 'left' || key === 'right') {
+      // like natural-display Casios: ◀ at the start wraps to the end and ▶ at the end to the start.
+      // Gaps drawn at the same spot count as one position, so every press visibly moves.
+      const pos = new Map(layoutExpr(this.buf).carets.map((c) => [c.index, c]));
+      const here = pos.get(this.cur);
+      for (let k = 0; k <= n; k++) {
+        if (key === 'left') this.cur = this.cur > 0 ? this.cur - 1 : n;
+        else this.cur = this.cur < n ? this.cur + 1 : 0;
+        const c = pos.get(this.cur);
+        if (!here || !c || c.x !== here.x || c.base !== here.base) break;
+      }
+    } else if (this.buf.length === 0) this.replay(key === 'up' ? -1 : 1);
     else this.vertical(key === 'up' ? -1 : 1);
   }
 
@@ -507,6 +554,51 @@ export class Calculator {
       this.editLast('left');
     }
     if (index !== null && index !== undefined) this.cur = Math.max(0, Math.min(this.buf.length, index));
+    if (this.phase === 'edit') this.tidy();
+  }
+
+  /** After every edit or cursor move: dissolve finished base boxes, then settle the cursor. */
+  tidy() {
+    this.dissolveBases();
+    this.settleCursor();
+  }
+
+  /**
+   * A base box (□ of □², □^□) that the cursor has left and that holds one plain value
+   * (a number, Ans, π, a variable, or one template) becomes ordinary input: 3² is then the
+   * same as typing 3 x², and text can be typed in front of it without landing in the box.
+   */
+  dissolveBases() {
+    const buf = this.buf;
+    for (let s = buf.length - 1; s >= 0; s--) {
+      if (buf[s] !== 'tBase') continue;
+      const e = this.templateMarks(s)[1];
+      if (this.cur > s && this.cur <= e) continue; // still being edited
+      const inner = buf.slice(s + 1, e);
+      const plain =
+        inner.length > 0 &&
+        (inner.every((t) => DIGIT_KEYS.has(t) || t === '.') ||
+          (inner.length === 1 && ATOM.has(inner[0])) ||
+          (TEMPLATE_START.has(inner[0]) && this.templateMarks(s + 1).at(-1) === e - 1));
+      if (!plain) continue;
+      buf.splice(e, 1);
+      buf.splice(s, 1);
+      if (this.cur > e) this.cur -= 2;
+    }
+  }
+
+  /**
+   * Some gaps are drawn at the same spot (just before a box and just inside it). The screen
+   * can't tell them apart, so the cursor always takes the innermost one: what you type then
+   * goes where the cursor appears to be, into the box.
+   */
+  settleCursor() {
+    const { carets } = layoutExpr(this.buf);
+    const here = carets.find((c) => c.index === this.cur);
+    if (!here) return;
+    let best = here;
+    for (const c of carets) if (c.x === here.x && c.base === here.base && c.depth > best.depth) best = c;
+    this.cur = best.index;
   }
 
   /** Re-open the expression behind the shown result for editing (◀ → end, ▶ → start). */
