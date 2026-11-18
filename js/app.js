@@ -155,7 +155,9 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (reloaded) return;
       reloaded = true;
-      window.location.reload();
+      // never cut the easter egg off halfway: wait for it to finish first
+      const reload = () => (easterEggPlaying() ? setTimeout(reload, 250) : window.location.reload());
+      reload();
     });
   }
   window.addEventListener('load', () => {
