@@ -172,7 +172,7 @@ test('MODE and SETUP menus', () => {
 
 test('hyp and inverse trig keys', () => {
   assert.equal(lower(calc('hyp sin 0 eq')), '0.');
-  assert.equal(upper(calc('hyp shift sin 1')), 'sinh⁻ 1');
+  assert.equal(upper(calc('hyp shift sin 1')), 'sinh⁻(1');
   assert.equal(lower(calc('shift cos 0 eq')), '90.');
 });
 
@@ -241,6 +241,33 @@ test('natural display templates', () => {
   const f = calc('5 eq frac 2 eq'); // □/□ after a result divides Ans
   assert.equal(upper(f), 'Ans/2');
   assert.equal(lower(f), '2 1/2');
+});
+
+test('functions open their bracket', () => {
+  assert.equal(upper(calc('sin')), 'sin(');
+  assert.equal(upper(calc('log 100')), 'log(100');
+  assert.equal(lower(calc('sin 30 eq')), '0.5'); // missing ")" closed at the end
+  assert.equal(lower(calc('sin 30 rp sq eq')), '0.25');
+  const c = calc('ln del');
+  assert.equal(c.buf.length, 0); // DEL removes "ln(" as a whole
+});
+
+test('x^, x², x⁻¹, x! with nothing before them get an empty base box', () => {
+  const p = calc('pow');
+  assert.deepEqual(p.buf, ['tBase', 'tEnd', 'tPow', 'tEnd']);
+  assert.equal(p.cur, 1); // cursor in the base box
+  assert.equal(lower(calc('pow 2 right right 10 eq')), '1024.'); // ▶ stops after the base, then enters the exponent
+  const s = calc('add sq');
+  assert.deepEqual(s.buf, ['add', 'tBase', 'tEnd', 'sq']);
+  assert.equal(s.cur, 2);
+  assert.equal(lower(calc('sq 3 eq')), '9.');
+  assert.equal(lower(calc('sq 1 add 2 eq')), '9.'); // the base box is one value: (1+2)²
+  assert.equal(lower(calc('shift inv 4 eq')), '24.');
+  // after a value: unchanged
+  assert.deepEqual(calc('3 sq').buf, ['3', 'sq']);
+  assert.deepEqual(calc('3 pow').buf, ['3', 'tPow', 'tEnd']);
+  assert.deepEqual(calc('lp 3 rp pow').buf, ['lp', '3', 'rp', 'tPow', 'tEnd']);
+  assert.deepEqual(calc('5 eq sq').buf, ['ans', 'sq']); // after a result: Ans²
 });
 
 test('templates: empty slot, delete, overwrite', () => {

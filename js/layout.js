@@ -10,8 +10,15 @@ import { DIGITS, SLOTS, TEMPLATE_START, tokenText } from './engine/tokens.js';
 
 const GLYPH_W = 5;
 const GLYPH_H = 7;
+const SMALL_W = 3; // small 3×5 font for exponents, the log base and root indices
+const SMALL_H = 5;
 const BAR = -4; // fraction bar row, level with the middle of a glyph
+const SMALL_BAR = -3; // the same for small glyphs
 export const PLACEHOLDER = '□';
+// template slots drawn in the small font (by slot number)
+const SMALL_SLOTS = { tPow: [0], tTenx: [0], tEx: [0], tLogb: [0], tRoot: [0] };
+// superscript characters in token texts, drawn as raised small text
+const SUPERSCRIPT = { '²': '2', '³': '3', '⁻': '-1' };
 
 // ---------- token tree ----------
 
@@ -44,24 +51,41 @@ export function tree(tokens) {
 
 // ---------- boxes ----------
 // box: { w, asc, desc, ops: [...], carets: [...] }
-// ops: { g: char, x, y } (y = top row) | { h: [x0, x1], y } | { l: [x0, y0, x1, y1] }
-// carets: { index, x, base, depth }  (cursor sits just left of column x, on baseline
-//         `base`; depth = number of enclosing templates)
+// ops: { g: char, x, y, s? } (y = top row, s = small 3×5 glyph) | { h: [x0, x1], y } | { l: [x0, y0, x1, y1] }
+// carets: { index, x, base, depth, h }  (cursor sits just left of column x, on baseline
+//         `base`; depth = number of enclosing templates; h = glyph height there, 7 or 5)
 
 function shift(box, dx, dy, ops, carets) {
   for (const o of box.ops) {
-    if (o.g !== undefined) ops.push({ g: o.g, x: o.x + dx, y: o.y + dy });
+    if (o.g !== undefined) ops.push({ ...o, x: o.x + dx, y: o.y + dy });
     else if (o.h) ops.push({ h: [o.h[0] + dx, o.h[1] + dx], y: o.y + dy });
     else ops.push({ l: [o.l[0] + dx, o.l[1] + dy, o.l[2] + dx, o.l[3] + dy] });
   }
-  for (const c of box.carets) carets.push({ index: c.index, x: c.x + dx, base: c.base + dy, depth: c.depth });
+  for (const c of box.carets) carets.push({ ...c, x: c.x + dx, base: c.base + dy });
 }
 
-function textBox(str, advance = GLYPH_W + 1) {
+function textBox(str, advance, small = false) {
+  const gw = small ? SMALL_W : GLYPH_W;
+  const gh = small ? SMALL_H : GLYPH_H;
+  const step = advance ?? gw + 1;
   const chars = Array.from(str);
-  const ops = chars.map((g, k) => ({ g, x: k * advance, y: -GLYPH_H }));
-  const w = chars.length ? (chars.length - 1) * advance + GLYPH_W : 0;
-  return { w, asc: GLYPH_H, desc: 0, ops, carets: [] };
+  const ops = chars.map((g, k) => (small ? { g, x: k * step, y: -gh, s: 1 } : { g, x: k * step, y: -gh }));
+  const w = chars.length ? (chars.length - 1) * step + gw : 0;
+  return { w, asc: gh, desc: 0, ops, carets: [] };
+}
+
+/** Token text, with ² ³ ⁻¹ drawn as raised small text like other exponents. */
+function tokenBox(t, small) {
+  const text = tokenText(t);
+  if (!/[²³⁻]/.test(text)) return textBox(text, undefined, small);
+  const parts = [];
+  for (const run of text.match(/[²³⁻]+|[^²³⁻]+/g)) {
+    if (SUPERSCRIPT[run[0]]) {
+      const sup = Array.from(run).map((c) => SUPERSCRIPT[c]).join('');
+      parts.push(supBox(textBox(sup, undefined, true), small));
+    } else parts.push(textBox(run, undefined, small));
+  }
+  return hcat(parts);
 }
 
 /** Lay boxes side by side with a one-dot gap. */
@@ -69,7 +93,7 @@ function hcat(boxes) {
   const ops = [];
   const carets = [];
   let x = 0;
-  let asc = GLYPH_H;
+  let asc = 0;
   let desc = 0;
   const xs = [];
   boxes.forEach((b, k) => {
@@ -83,17 +107,19 @@ function hcat(boxes) {
   return { w: x, asc, desc, ops, carets, xs };
 }
 
-function rowBox(row, placeholder) {
+function rowBox(row, placeholder, small = false) {
+  const h = small ? SMALL_H : GLYPH_H;
   if (!row.items.length) {
-    const b = placeholder ? textBox(PLACEHOLDER) : { w: 0, asc: GLYPH_H, desc: 0, ops: [], carets: [] };
-    b.carets = [{ index: row.end, x: 0, base: 0, depth: 0 }];
+    const b = placeholder ? textBox(PLACEHOLDER, undefined, small) : { w: 0, asc: h, desc: 0, ops: [], carets: [] };
+    b.carets = [{ index: row.end, x: 0, base: 0, depth: 0, h }];
     return b;
   }
-  const boxes = row.items.map(itemBox);
-  stretchBrackets(row.items, boxes);
+  const boxes = row.items.map((it) => itemBox(it, small));
+  stretchBrackets(row.items, boxes, small);
   const b = hcat(boxes);
-  row.items.forEach((it, k) => b.carets.push({ index: it.start, x: b.xs[k], base: 0, depth: 0 }));
-  b.carets.push({ index: row.end, x: b.w + 1, base: 0, depth: 0 });
+  b.asc = Math.max(b.asc, h);
+  row.items.forEach((it, k) => b.carets.push({ index: it.start, x: b.xs[k], base: 0, depth: 0, h }));
+  b.carets.push({ index: row.end, x: b.w + 1, base: 0, depth: 0, h });
   return b;
 }
 
@@ -113,7 +139,8 @@ function parenBox(asc, desc, side) {
 }
 
 /** Make "(" ... ")" as tall as what they enclose (an unclosed "(" runs to the end of the row). */
-function stretchBrackets(items, boxes) {
+function stretchBrackets(items, boxes, small) {
+  const h = small ? SMALL_H : GLYPH_H;
   const open = [];
   const pairs = [];
   items.forEach((it, k) => {
@@ -124,22 +151,22 @@ function stretchBrackets(items, boxes) {
   // innermost pairs come first, so outer brackets see the already-stretched inner ones
   for (const [a, b] of pairs) {
     const end = b === null ? boxes.length : b;
-    let asc = GLYPH_H;
+    let asc = h;
     let desc = 0;
     for (let k = a + 1; k < end; k++) {
       asc = Math.max(asc, boxes[k].asc);
       desc = Math.max(desc, boxes[k].desc);
     }
-    if (asc === GLYPH_H && desc === 0) continue;
+    if (asc === h && desc === 0) continue;
     boxes[a] = parenBox(asc + 1, desc + 1, 'l');
     if (b !== null) boxes[b] = parenBox(asc + 1, desc + 1, 'r');
   }
 }
 
-function bracketed(arg) {
-  const tall = arg.asc > GLYPH_H || arg.desc > 0;
-  const l = tall ? parenBox(arg.asc + 1, arg.desc + 1, 'l') : textBox('(');
-  const r = tall ? parenBox(arg.asc + 1, arg.desc + 1, 'r') : textBox(')');
+function bracketed(arg, small = false) {
+  const tall = arg.asc > (small ? SMALL_H : GLYPH_H) || arg.desc > 0;
+  const l = tall ? parenBox(arg.asc + 1, arg.desc + 1, 'l') : textBox('(', undefined, small);
+  const r = tall ? parenBox(arg.asc + 1, arg.desc + 1, 'r') : textBox(')', undefined, small);
   return hcat([l, arg, r]);
 }
 
@@ -159,16 +186,17 @@ function subBox(b) {
   const carets = [];
   const base = b.asc - 3;
   shift(b, 0, base, ops, carets);
-  return { w: b.w, asc: GLYPH_H, desc: base + b.desc, ops, carets };
+  return { w: b.w, asc: Math.max(0, b.asc - base), desc: base + b.desc, ops, carets };
 }
 
-function fracBox(num, den) {
+function fracBox(num, den, small = false) {
+  const bar = small ? SMALL_BAR : BAR;
   const inner = Math.max(num.w, den.w);
   const w = inner + 2;
-  const ops = [{ h: [0, w - 1], y: BAR }];
+  const ops = [{ h: [0, w - 1], y: bar }];
   const carets = [];
-  const numBase = BAR - 1 - num.desc;
-  const denBase = BAR + 2 + den.asc;
+  const numBase = bar - 1 - num.desc;
+  const denBase = bar + 2 + den.asc;
   shift(num, 1 + Math.floor((inner - num.w) / 2), numBase, ops, carets);
   shift(den, 1 + Math.floor((inner - den.w) / 2), denBase, ops, carets);
   return { w, asc: -(numBase - num.asc), desc: denBase + den.desc, ops, carets };
@@ -186,7 +214,7 @@ function rootBox(arg, index) {
     const idxBase = b - 3 - index.desc;
     shift(index, 0, idxBase, ops, carets);
     asc = Math.max(asc, -(idxBase - index.asc));
-    x0 = Math.max(0, index.w - 2);
+    x0 = Math.max(0, index.w - 1); // the small index sits clear of the radical's stem
   }
   ops.push({ l: [x0, b - 2, x0 + 2, b] });
   ops.push({ l: [x0 + 3, top, x0 + 3, b] });
@@ -196,41 +224,46 @@ function rootBox(arg, index) {
 }
 
 /** Exponent raised so its bottom row sits just above the glyph middle. */
-function supBox(exp) {
+function supBox(exp, small = false) {
   const ops = [];
   const carets = [];
-  const base = BAR - exp.desc;
+  const base = (small ? SMALL_BAR : BAR) - exp.desc;
   shift(exp, 0, base, ops, carets);
-  return { w: exp.w, asc: Math.max(GLYPH_H, -(base - exp.asc)), desc: 0, ops, carets };
+  return { w: exp.w, asc: -(base - exp.asc), desc: 0, ops, carets };
 }
 
-function itemBox(it) {
-  if (it.kind === 'tok') return textBox(tokenText(it.t));
-  const s = it.slots.map((r) => rowBox(r, true));
+function itemBox(it, small = false) {
+  if (it.kind === 'tok') return tokenBox(it.t, small);
+  const smallSlot = SMALL_SLOTS[it.t] || [];
+  const s = it.slots.map((r, k) => rowBox(r, true, small || smallSlot.includes(k)));
   for (const box of s) for (const c of box.carets) c.depth++;
+  const text = (str) => textBox(str, undefined, small);
   switch (it.t) {
     case 'tFrac':
-      return fracBox(s[0], s[1]);
+      return fracBox(s[0], s[1], small);
     case 'tMixed':
-      return hcat([s[0], fracBox(s[1], s[2])]);
+      return hcat([s[0], fracBox(s[1], s[2], small)]);
     case 'tSqrt':
       return rootBox(s[0]);
     case 'tCbrt':
-      return rootBox(s[0], textBox('3'));
+      return rootBox(s[0], textBox('3', undefined, true));
     case 'tRoot':
       return rootBox(s[1], s[0]);
     case 'tPow':
-      return supBox(s[0]);
+      return supBox(s[0], small);
     case 'tTenx':
-      return hcat([textBox('10'), supBox(s[0])]);
+      return hcat([text('10'), supBox(s[0], small)]);
     case 'tEx':
-      return hcat([textBox('e'), supBox(s[0])]);
+      return hcat([text('e'), supBox(s[0], small)]);
     case 'tAbs':
       return absBox(s[0]);
     case 'tLogb':
-      return hcat([textBox('log'), subBox(s[0]), bracketed(s[1])]);
+      return hcat([text('log'), subBox(s[0]), bracketed(s[1], small)]);
+    case 'tBase':
+      // the base of x^ / x² ...: brackets once it holds more than one value
+      return isAtomic(it.slots[0]) ? s[0] : bracketed(s[0], small);
   }
-  return textBox('?');
+  return text('?');
 }
 
 /**
@@ -273,7 +306,7 @@ export function layoutValue(v, maxW = Infinity) {
   const mant = v.cells.map((c) => c.ch + (c.dp ? '.' : '')).join('');
   const digits = mant.replace(/\D/g, '').length;
   for (let p = digits - 1; p >= 1; p--) {
-    const s = Number(mant).toPrecision(p);
+    const s = Number(mant).toPrecision(p).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, ''); // no trailing zeros
     const cells = Array.from(s.replace('.', '')).map((ch, k) => ({ ch, dp: s.indexOf('.') === k + 1 }));
     const box = valueBox({ ...v, cells });
     if (box.w <= maxW) return box;
@@ -291,7 +324,7 @@ function valueBox(v) {
   } else if (mant.endsWith('.')) mant = mant.slice(0, -1);
   if (!v.exp) return textBox(mant);
   const e = (v.exp.neg ? '-' : '') + String(Number(v.exp.digits));
-  return hcat([textBox(mant), textBox('×10'), supBox(textBox(e))]);
+  return hcat([textBox(mant), textBox('×10'), supBox(textBox(e, undefined, true))]);
 }
 
 // ---------- linear text (tests, screen readers) ----------
@@ -300,10 +333,14 @@ function rowText(row) {
   return row.items.map(itemText).join('');
 }
 
+/** A row that reads as one value without brackets (a number, one token or one template). */
+function isAtomic(row) {
+  return row.items.length <= 1 || row.items.every((it) => it.kind === 'tok' && (DIGITS.has(it.t) || it.t === '.'));
+}
+
 function grouped(row) {
   const s = rowText(row);
-  const atomic = row.items.length <= 1 || row.items.every((it) => it.kind === 'tok' && (DIGITS.has(it.t) || it.t === '.'));
-  return atomic ? s : `(${s})`;
+  return isAtomic(row) ? s : `(${s})`;
 }
 
 function itemText(it) {
@@ -330,6 +367,8 @@ function itemText(it) {
       return `Abs(${rowText(it.slots[0])})`;
     case 'tLogb':
       return `log_${s[0]}(${rowText(it.slots[1])})`;
+    case 'tBase':
+      return s[0];
   }
   return '?';
 }

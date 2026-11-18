@@ -5,7 +5,7 @@ import { parse } from './engine/parser.js';
 import { evaluate, round15, toNum } from './engine/evaluate.js';
 import { Fraction } from './engine/fraction.js';
 import { dmsString, formatLower, fractionString, rationalOf } from './engine/format.js';
-import { BINARY, CH, CalcError, POSTFIX, SLOTS, TEMPLATE_START, isMarker } from './engine/tokens.js';
+import { ATOM, BINARY, CH, CalcError, POSTFIX, SLOTS, TEMPLATE_START, isMarker } from './engine/tokens.js';
 import { layoutExpr, linearText } from './layout.js';
 
 const STORAGE_KEY = 'sci82.state.v1';
@@ -29,6 +29,8 @@ const SHIFT_TEMPLATE = { sqrt: 'tCbrt', pow: 'tRoot', log: 'tTenx', ln: 'tEx' };
 // templates whose first slot takes the number typed just before the key
 const CAPTURE = new Set(['tFrac', 'tMixed', 'tRoot']);
 const isNumberTok = (t) => DIGIT_KEYS.has(t) || t === '.' || t === 'EE';
+// postfix keys that get an empty base box (□², □!) when no value comes before them
+const NEEDS_BASE = new Set(['sq', 'cube', 'inv', 'fact']);
 
 const ZERO = Fraction.of(0);
 const isF = (v) => v instanceof Fraction;
@@ -305,6 +307,13 @@ export class Calculator {
       this.dtRepeat = null;
       return;
     }
+    if (NEEDS_BASE.has(tok) && !this.hasOperandBefore()) {
+      // nothing to apply x², x⁻¹ ... to: insert an empty base box and move into it
+      if (this.buf.length + 3 > MAX_TOKENS) return;
+      this.buf.splice(this.cur, 0, 'tBase', 'tEnd', tok);
+      this.cur++;
+      return;
+    }
     // overwrite mode never replaces a template marker
     const overwrite = !this.ins && this.cur < this.buf.length && !isMarker(this.buf[this.cur]);
     if (overwrite) this.buf[this.cur] = tok;
@@ -325,6 +334,13 @@ export class Calculator {
       return;
     }
     if (this.buf.length + tpl.length > MAX_TOKENS) return;
+    if (kind === 'tPow' && !this.hasOperandBefore()) {
+      // x^ with nothing before it: □^□, cursor in the base box
+      if (this.buf.length + tpl.length + 2 > MAX_TOKENS) return;
+      this.buf.splice(this.cur, 0, 'tBase', 'tEnd', ...tpl);
+      this.cur++;
+      return;
+    }
     let captured = [];
     if (CAPTURE.has(kind)) {
       let s = this.cur;
@@ -334,6 +350,13 @@ export class Calculator {
     }
     this.buf.splice(this.cur, 0, kind, ...captured, ...tpl.slice(1));
     this.cur += captured.length ? captured.length + 2 : 1;
+  }
+
+  /** True when the token before the cursor ends a value (a number, Ans, ")", x², a template...). */
+  hasOperandBefore() {
+    const t = this.buf[this.cur - 1];
+    if (t === undefined) return false;
+    return DIGIT_KEYS.has(t) || t === '.' || ATOM.has(t) || t === 'rp' || POSTFIX.has(t) || t === 'tEnd';
   }
 
   startLine(buf, cur) {

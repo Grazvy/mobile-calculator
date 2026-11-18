@@ -1,21 +1,22 @@
 // Recursive-descent parser following the two-line scientific calculator
 // order of operations (highest priority first):
-//   1. Pol( Rec( and parentheses
+//   1. parentheses, and functions entered with their bracket: Pol( Rec( sin( cos(
+//      tan( (and inverses / hyperbolics) log( ln( Rnd(
 //   2. postfix functions: x² x³ x⁻¹ x! °'" % angle-unit marks x̂ ŷ
 //   3. ^  ˣ√  log_b (left to right)
 //   4. a b/c fraction entry
-//   5. implied multiplication before π, variables, Ans, "(" and Pol(/Rec(
-//   6. prefix functions: (-) √ ³√ log ln 10^ e^ sin cos tan ... Rnd
-//   7. implied multiplication before prefix functions (2sin30)
+//   5. implied multiplication before π, variables, Ans, "(" and bracketed functions (2sin(30))
+//   6. prefix functions: (-) √ ³√ 10^ e^
+//   7. implied multiplication before prefix functions (2√3)
 //   8. nPr nCr
 //   9. × ÷
 //  10. + −
-// Prefix functions take the following value without needing "(":
-// "sin 30+1" is sin(30)+1. Missing ")" at the end of the input are closed automatically.
+// "sin(30)²" is (sin 30)², because the bracket belongs to the function.
+// Missing ")" at the end of the input are closed automatically.
 
-import { ATOM, CalcError, POSTFIX, PREFIX } from './tokens.js';
+import { ATOM, CALL, CalcError, POSTFIX, PREFIX } from './tokens.js';
 
-const startsImplA = (t) => ATOM.has(t) || t === 'lp' || t === 'pol' || t === 'rec';
+const startsImplA = (t) => ATOM.has(t) || t === 'lp' || t === 'pol' || t === 'rec' || CALL.has(t);
 const startsImplB = (t) => startsImplA(t) || PREFIX.has(t);
 const isPrefixPos = (t) => PREFIX.has(t) || t === 'sub' || t === 'add';
 
@@ -164,6 +165,12 @@ export function parse(lx) {
         return { type: 'call', fn: l.t, args: [a, b], pos: l.pos };
       }
       default:
+        if (CALL.has(l.t)) {
+          next();
+          const arg = sum();
+          closeParen();
+          return { type: 'pre', fn: l.t, arg, pos: l.pos };
+        }
         if (ATOM.has(l.t)) {
           next();
           return { type: 'atom', name: l.t, pos: l.pos };

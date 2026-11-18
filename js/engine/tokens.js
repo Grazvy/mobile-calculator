@@ -17,12 +17,12 @@ export const TOKEN_TEXT = {
   '.': '.', EE: 'E',
   add: '+', sub: '-', mul: '×', div: '÷', pow: '^', xrt: CH.SUPX + '√',
   npr: 'P', ncr: 'C', frac: CH.FRAC,
-  neg: CH.NEG, sqrt: '√', cbrt: '³√', log: 'log ', ln: 'ln ', tenx: '10^', ex: 'e^',
-  sin: 'sin ', cos: 'cos ', tan: 'tan ',
-  asin: 'sin' + CH.INV + ' ', acos: 'cos' + CH.INV + ' ', atan: 'tan' + CH.INV + ' ',
-  sinh: 'sinh ', cosh: 'cosh ', tanh: 'tanh ',
-  asinh: 'sinh' + CH.INV + ' ', acosh: 'cosh' + CH.INV + ' ', atanh: 'tanh' + CH.INV + ' ',
-  rnd: 'Rnd ',
+  neg: CH.NEG, sqrt: '√', cbrt: '³√', log: 'log(', ln: 'ln(', tenx: '10^', ex: 'e^',
+  sin: 'sin(', cos: 'cos(', tan: 'tan(',
+  asin: 'sin' + CH.INV + '(', acos: 'cos' + CH.INV + '(', atan: 'tan' + CH.INV + '(',
+  sinh: 'sinh(', cosh: 'cosh(', tanh: 'tanh(',
+  asinh: 'sinh' + CH.INV + '(', acosh: 'cosh' + CH.INV + '(', atanh: 'tanh' + CH.INV + '(',
+  rnd: 'Rnd(',
   sq: '²', cube: '³', inv: CH.INV, fact: '!', pct: '%', dms: '°',
   udeg: '°', urad: 'r', ugra: 'g', xhat: CH.XHAT, yhat: CH.YHAT,
   pi: 'π', euler: 'e', ran: 'Ran#', ans: 'Ans', abs: 'Abs', logb: 'log',
@@ -37,10 +37,14 @@ export const DIGITS = new Set(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
 
 export const BINARY = new Set(['add', 'sub', 'mul', 'div', 'pow', 'xrt', 'logb', 'npr', 'ncr']);
 
-export const PREFIX = new Set([
-  'neg', 'sqrt', 'cbrt', 'abs', 'log', 'ln', 'tenx', 'ex',
+// prefix functions that take the following value without a bracket
+export const PREFIX = new Set(['neg', 'sqrt', 'cbrt', 'abs', 'tenx', 'ex']);
+
+// functions entered with their opening bracket ("sin("); the argument runs to the
+// matching ")" (or the end of the input), and they bind tighter than x², x⁻¹ ...
+export const CALL = new Set([
   'sin', 'cos', 'tan', 'asin', 'acos', 'atan',
-  'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh', 'rnd',
+  'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh', 'log', 'ln', 'rnd',
 ]);
 
 export const POSTFIX = new Set([
@@ -60,6 +64,7 @@ export const ATOM = new Set([
 // and the buffer always keeps them balanced.
 export const SLOTS = {
   tFrac: 2, tMixed: 3, tSqrt: 1, tCbrt: 1, tRoot: 2, tPow: 1, tTenx: 1, tEx: 1, tAbs: 1, tLogb: 2,
+  tBase: 1, // empty base box for x^, x², x³, x⁻¹ and x! with nothing before them
 };
 export const TEMPLATE_START = new Set(Object.keys(SLOTS));
 export const isMarker = (t) => TEMPLATE_START.has(t) || t === 'tSep' || t === 'tEnd';

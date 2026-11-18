@@ -4,7 +4,7 @@
 // gaps between them show as a fine grid, through the text as well.
 
 import { layoutExpr, layoutText, layoutValue } from './layout.js';
-import { glyph } from './font.js';
+import { glyph, smallGlyph } from './font.js';
 import { lowerText } from './engine/format.js';
 
 export const COLS = 72; // 12 characters across, the same dot size as the old single line
@@ -39,9 +39,11 @@ class Grid {
   draw(ops, ox, oy) {
     for (const o of ops) {
       if (o.g !== undefined) {
-        const rows = glyph(o.g);
-        for (let r = 0; r < 7; r++) {
-          for (let k = 0; k < 5; k++) if ((rows[r] >> (4 - k)) & 1) this.set(ox + o.x + k, oy + o.y + r);
+        // o.s: small 3×5 glyph (exponents, log base, root index), else 5×7
+        const [w, h] = o.s ? [3, 5] : [5, 7];
+        const rows = o.s ? smallGlyph(o.g) : glyph(o.g);
+        for (let r = 0; r < h; r++) {
+          for (let k = 0; k < w; k++) if ((rows[r] >> (w - 1 - k)) & 1) this.set(ox + o.x + k, oy + o.y + r);
         }
       } else if (o.h) {
         for (let x = o.h[0]; x <= o.h[1]; x++) this.set(ox + x, oy + o.y);
@@ -166,10 +168,10 @@ export class LcdRenderer {
       } else {
         // scroll just enough to keep the cursor visible
         const left = caret.x - 1;
-        const right = caret.x + 5;
+        const right = caret.x + (caret.h === 5 ? 3 : 5);
         if (left - this.sx < 0) this.sx = left;
         if (right - this.sx > COLS - 2) this.sx = right - (COLS - 2);
-        const ctop = lay.asc + caret.base - 8;
+        const ctop = lay.asc + caret.base - (caret.h + 1);
         const cbot = lay.asc + caret.base + 1;
         if (ctop - this.sy < 0) this.sy = ctop;
         if (cbot - this.sy > avail - 1) this.sy = cbot - (avail - 1);
@@ -183,8 +185,9 @@ export class LcdRenderer {
       if (caret && this.blink) {
         const cx = ox + caret.x;
         const cy = oy + caret.base;
-        if (view.insert) for (let y = cy - 8; y <= cy; y++) grid.set(cx - 1, y);
-        else for (let x = cx; x < cx + 5; x++) grid.set(x, cy);
+        // the cursor is as tall (insert) or as wide (overwrite) as the glyphs around it
+        if (view.insert) for (let y = cy - caret.h - 1; y <= cy; y++) grid.set(cx - 1, y);
+        else for (let x = cx; x < cx + (caret.h === 5 ? 3 : 5); x++) grid.set(x, cy);
       }
       grid.limit = rows;
 
@@ -247,7 +250,7 @@ export class LcdRenderer {
     let bestScore = Infinity;
     for (const c of f.carets) {
       const dx = Math.abs(gx - (c.x - 0.5));
-      const dy = Math.abs(gy - (c.base - 3.5));
+      const dy = Math.abs(gy - (c.base - c.h / 2));
       const score = dx + 1.5 * Math.max(0, dy - 3);
       if (score < bestScore) {
         bestScore = score;

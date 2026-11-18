@@ -13,11 +13,12 @@ const OPEN = {
   tSqrt: ['lp', 'sqrt', 'lp'], tCbrt: ['lp', 'cbrt', 'lp'],
   tTenx: ['lp', 'tenx', 'lp'], tEx: ['lp', 'ex', 'lp'],
   tPow: ['pow', 'lp'],
+  tBase: ['lp'],
 };
 const SEP = {
   tFrac: ['rp', 'frac', 'lp'], tMixed: ['rp', 'frac', 'lp'], tRoot: ['rp', 'xrt', 'lp'], tLogb: ['rp', 'logb', 'lp'],
 };
-const CLOSE = { tPow: ['rp'] };
+const CLOSE = { tPow: ['rp'], tBase: ['rp'] };
 
 function literal(mant, exp) {
   if (Math.abs(exp) > 150) return Number(`${mant}e${exp}`); // overflow is caught later

@@ -88,5 +88,33 @@ test('wide scientific results are rounded to fit', () => {
   const v = { neg: false, cells, exp: { neg: true, digits: '06' } };
   const fit = layoutValue(v, 70);
   assert.ok(fit.w <= 70);
-  assert.equal(fit.ops.map((o) => o.g).join('').replace(/×10.*/, ''), '6.6667');
+  assert.equal(fit.ops.map((o) => o.g).join('').replace(/×10.*/, ''), '6.66667');
+  assert.ok(fit.ops.filter((o) => o.s).length === 2, 'exponent -6 in the small font');
+});
+
+test('exponents, log base and root index use the small font; fractions do not', () => {
+  const small = (lay) => lay.ops.filter((o) => o.g !== undefined && o.s).map((o) => o.g).join('');
+  const pow = layoutExpr(['2', 'tPow', '1', '0', 'tEnd']);
+  assert.equal(small(pow), '10');
+  assert.equal(caretOf(pow, 2).h, 5);
+  assert.equal(caretOf(pow, 0).h, 7);
+  assert.equal(small(layoutExpr(['tLogb', '2', 'tSep', '8', 'tEnd'])), '2');
+  assert.equal(small(layoutExpr(['tLogb', 'tSep', 'tEnd'])), '□');
+  assert.equal(small(layoutExpr(['tCbrt', '8', 'tEnd'])), '3');
+  assert.equal(small(layoutExpr(['tRoot', '4', 'tSep', '8', 'tEnd'])), '4');
+  assert.equal(small(layoutExpr(['tTenx', '3', 'tEnd', 'tEx', '2', 'tEnd'])), '32');
+  assert.equal(small(layoutExpr(['tFrac', '1', 'tSep', '2', 'tEnd'])), '');
+  assert.equal(small(layoutExpr(['3', 'sq', 'add', 'asin', '1'])), '2-1'); // ² and ⁻¹ drawn raised
+  // nested: everything inside an exponent stays small
+  assert.equal(small(layoutExpr(['2', 'tPow', '3', 'tPow', '4', 'tEnd', 'tEnd'])), '34');
+});
+
+test('empty base box', () => {
+  const lay = layoutExpr(['tBase', 'tEnd', 'tPow', 'tEnd']);
+  const glyphs = lay.ops.filter((o) => o.g !== undefined);
+  assert.deepEqual(glyphs.map((o) => [o.g, !!o.s]), [['□', false], ['□', true]]);
+  assert.equal(linearText(['tBase', '1', 'add', '2', 'tEnd', 'sq']), '(1+2)²');
+  const br = layoutExpr(['tBase', '1', 'add', '2', 'tEnd', 'sq']);
+  assert.ok(br.ops.some((o) => o.g === '('), 'brackets around a longer base');
+  assertOneCaretPerGap(['tBase', '1', 'add', '2', 'tEnd', 'sq']);
 });

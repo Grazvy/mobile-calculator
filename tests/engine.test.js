@@ -40,7 +40,10 @@ test('precedence', () => {
   assert.equal(num('1 div 2 pi'), 0.159154943091895); // implied × binds tighter than ÷
   assert.equal(num('6 div 2 lp 1 add 2 rp'), 1);
   assert.equal(num('2 sin 30'), 1);
-  assert.equal(num('sin 30 add 1'), 1.5);
+  assert.equal(num('sin 30 rp add 1'), 1.5);
+  assert.equal(num('sin 30 add 60'), 1); // sin( runs to the end: sin(90)
+  assert.equal(num('sin 30 rp sq'), 0.25); // the bracket belongs to sin: (sin 30)²
+  assert.equal(num('2 sin 30 rp sin 30'), 0.5); // implied × between bracketed functions
   assert.equal(num('sqrt 2 sq'), 2);
   assert.equal(num('2 mul sub 3'), -6);
   assert.equal(num('2 pow sub 1'), 0.5);
