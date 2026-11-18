@@ -1,8 +1,8 @@
 // Offline support: precache the whole app, then serve it cache-first.
 // Bump VERSION whenever any file changes so phones pick up the new build.
-// assets/mlg/ clips are left out on purpose: they are optional, and one missing file
+// assets/mlg/ clips and pictures are left out on purpose: they are optional, and one missing file
 // would fail the whole install. The fetch handler caches them on first play instead.
-const VERSION = 'fx85-v11';
+const VERSION = 'fx85-v13';
 
 const ASSETS = [
   './',

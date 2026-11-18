@@ -63,7 +63,7 @@ Only linear regression is supported in REG mode (no Log/Exp/Pwr/Inv/Quad).
 
 ## Easter egg
 
-Typing `58008` and pressing `=` plays a MLG montage over the calculator (about 6.6 s, the length of the dubstep clip): a sniper scope, hitmarkers, flying chips, cans and frogs, and meme text. Tap the screen or press Esc to end it early. The sounds are your own MP3 clips in `assets/mlg/`, and [assets/mlg/README.md](../assets/mlg/README.md) lists the expected file names and format. Missing clips are skipped, silence at the start of a clip is trimmed, and clip loudness is levelled automatically. The timing of each clip is the `SOUNDS` table in `js/easter.js`, and the visuals take their cue times from it. With reduced motion turned on, the shake, flashes and spinning are dropped.
+Typing `58008` and pressing `=` plays a MLG montage over the calculator (about 6.6 s, the length of the dubstep clip): a sniper scope, hitmarkers, thrown chips, bags, cans and illuminati triangles, dancers on both sides, and meme text. Tap the screen or press Esc to end it early. The sounds and pictures are your own files in `assets/mlg/`, and [assets/mlg/README.md](../assets/mlg/README.md) lists the expected file names and format. Missing clips are skipped, silence at the start of a clip is trimmed, and clip loudness is levelled automatically. The timing of each clip is the `SOUNDS` table in `js/easter.js`, and the visuals take their cue times from it. With reduced motion turned on, the shake, flashes and spinning are dropped.
 
 ## Code layout
 

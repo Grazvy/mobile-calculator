@@ -530,9 +530,9 @@ body.mlg-shake {
 }
 
 .mlg-hit svg,
-.mlg-fly svg,
-.mlg-illu svg,
-.mlg-shades svg {
+.mlg-shades svg,
+.mlg-fly img,
+.mlg-dancer img {
   display: block;
   width: 100%;
   height: auto;
@@ -609,31 +609,41 @@ body.mlg-shake {
   animation: mlg-fly var(--d) linear forwards;
 }
 
-.mlg-frog {
-  font-size: var(--s);
-  line-height: 1;
-}
-
 @keyframes mlg-fly {
   0% { transform: translate(var(--x0), var(--y0)) rotate(0deg); animation-timing-function: ease-out; }
   50% { transform: translate(var(--xm), var(--ym)) rotate(calc(var(--r) / 2)); animation-timing-function: ease-in; }
   100% { transform: translate(var(--x1), var(--y1)) rotate(var(--r)); }
 }
 
-.mlg-illu {
+/* dancers: slide in from the left and right edges, then bob to the beat */
+.mlg-dancer {
   z-index: 2;
-  top: calc(env(safe-area-inset-top, 0px) + 4vmin);
-  right: 4vmin;
-  width: 22vmin;
-  animation: mlg-spin 1s linear infinite, mlg-fade-in 0.3s ease-out;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 22vh);
+  width: 41vmin;
+  animation:
+    mlg-slide-in 0.35s cubic-bezier(0.2, 1.4, 0.5, 1) both,
+    mlg-bob 0.43s ease-in-out 0.35s infinite alternate;
 }
 
-@keyframes mlg-spin {
-  to { transform: rotate(360deg); }
+.mlg-dancer.mlg-left {
+  left: -3vmin;
+  --from: -110%;
 }
 
-@keyframes mlg-fade-in {
-  from { opacity: 0; }
+.mlg-dancer.mlg-right {
+  right: -2vmin;
+  width: 36vmin;
+  --from: 110%;
+}
+
+@keyframes mlg-slide-in {
+  from { transform: translateX(var(--from)); }
+  to { transform: none; }
+}
+
+@keyframes mlg-bob {
+  from { transform: none; }
+  to { transform: translateY(-2.5vmin) rotate(2deg); }
 }
 
 .mlg-shades {
@@ -649,9 +659,12 @@ body.mlg-shake {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  body.mlg-shake,
-  .mlg-illu {
+  body.mlg-shake {
     animation: none;
+  }
+
+  .mlg-dancer {
+    animation: mlg-slide-in 0.35s ease-out both;
   }
 
   .mlg-tint {

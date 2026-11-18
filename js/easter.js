@@ -9,7 +9,8 @@ const FADE_AT = 6.2; // visuals start fading out
 const AUDIO_FADE_AT = 6.3; // everything still playing fades to silence by DURATION
 const LATE_LIMIT = 0.3; // a clip that is ready this late still plays, later ones are skipped
 const TARGET_RMS = 0.2; // clips are levelled to this loudness (about -14 dBFS) before `vol`
-const DUCK = 0.25; // the music drops to this while a voice line plays
+const DUCK = 0.45; // the music drops to this while a voice line plays (about -7 dB)
+const FX_LEVEL = 0.7; // voices and effects sit about 3 dB lower than the music's levelled loudness
 const EDGE = 0.06; // fade at a cut, so clips never click
 
 /** True for exactly 58008 (the calculation just run, or the line being typed). */
@@ -24,7 +25,7 @@ export function isEasterEgg(tokens) {
  * Voice lines never overlap each other; effects sit in the pauses of the voices.
  */
 export const SOUNDS = [
-  { t: 0, clip: 'dubstep', vol: 0.6, kind: 'bed' },
+  { t: 0, clip: 'dubstep', vol: 1.25, kind: 'bed' },
   { t: 0, clip: 'airhorn', vol: 1, len: 0.45, kind: 'sfx' },
   { t: 0.42, clip: 'damn-son', vol: 1, len: 2.12, kind: 'voice' },
   { t: 0.72, clip: 'sniper', vol: 1, len: 0.25, kind: 'sfx' }, // the crack fills the pause after "damn son"
@@ -44,23 +45,6 @@ const SVG = {
   hit:
     `<svg viewBox="0 0 40 40"><path d="${HIT_PATH}" stroke="#000" stroke-width="7" stroke-linecap="square"/>` +
     `<path d="${HIT_PATH}" stroke="#fff" stroke-width="3.5" stroke-linecap="square"/></svg>`,
-  chip:
-    '<svg viewBox="0 0 100 92"><path d="M50 4Q57 6 96 82Q50 94 4 82Q43 6 50 4Z" fill="#f59b1d" stroke="#c45f16" stroke-width="3"/>' +
-    '<g fill="#d8460e"><circle cx="40" cy="40" r="3"/><circle cx="58" cy="52" r="2.5"/><circle cx="34" cy="66" r="3"/>' +
-    '<circle cx="66" cy="72" r="2.5"/><circle cx="50" cy="26" r="2"/><circle cx="48" cy="62" r="2"/></g>' +
-    '<g fill="#ffd27a"><circle cx="54" cy="36" r="2"/><circle cx="26" cy="76" r="2"/><circle cx="74" cy="64" r="1.8"/></g></svg>',
-  can:
-    '<svg viewBox="0 0 60 112"><rect x="6" y="10" width="48" height="94" rx="7" fill="#1d8b3c"/>' +
-    '<rect x="6" y="10" width="48" height="94" rx="7" fill="none" stroke="#0d5221" stroke-width="2"/>' +
-    '<ellipse cx="30" cy="10" rx="22" ry="6" fill="#c9ccd1" stroke="#7d8187" stroke-width="2"/>' +
-    '<ellipse cx="30" cy="104" rx="22" ry="5" fill="#9ea2a8"/>' +
-    '<path d="M6 44Q30 34 54 44V68Q30 58 6 68Z" fill="#c8102e"/>' +
-    '<text x="30" y="61" font-family="Impact,Arial Black,sans-serif" font-size="17" fill="#fff" text-anchor="middle">DEW</text>' +
-    '<rect x="13" y="18" width="5" height="78" rx="2.5" fill="#fff" opacity=".28"/></svg>',
-  illuminati:
-    '<svg viewBox="0 0 100 90"><path d="M50 4L96 86H4Z" fill="#2fbf4a" stroke="#0b5d1f" stroke-width="4" stroke-linejoin="round"/>' +
-    '<path d="M28 58Q50 36 72 58Q50 78 28 58Z" fill="#fff" stroke="#000" stroke-width="3"/>' +
-    '<circle cx="50" cy="58" r="8" fill="#000"/><circle cx="53" cy="55" r="2.5" fill="#fff"/></svg>',
   shades:
     '<svg viewBox="0 0 16 5" shape-rendering="crispEdges"><g fill="#000"><rect width="16" height="1"/>' +
     '<rect x="1" y="1" width="6" height="2"/><rect x="2" y="3" width="4" height="1"/>' +
@@ -71,8 +55,19 @@ const SVG = {
 /** Start time of the n-th SOUNDS entry for a clip, so the visuals land on their sounds. */
 const cue = (name, n = 0) => SOUNDS.filter((e) => e.clip === name)[n].t;
 
-const EMOJI = ['🐸', '🐸', '💯', '👌', '🔥'];
-const FLYERS = ['chip', 'can', 'frog', 'chip', 'can', 'frog', 'emoji'];
+// Pictures from assets/mlg/. Flyers are thrown across the screen; w = width range in vmin
+// (tall pictures get a narrower range so they all look about the same size).
+const FLYERS = {
+  'd-chip': { file: 'd-chip.png', w: [13, 19] },
+  'd-package': { file: 'd-package.png', w: [14, 18] },
+  'mtn-d': { file: 'mtn-d.png', w: [10, 13] },
+  illum: { file: 'illum.png', w: [15, 21] },
+};
+// order they are thrown in: mostly chips
+const THROWS = ['d-chip', 'mtn-d', 'd-package', 'd-chip', 'illum', 'mtn-d', 'd-chip', 'd-package', 'illum'];
+// dancers on the sides of the screen
+const DANCERS = { left: 's-dog.gif', right: 'mlg-frog.gif' };
+const IMAGES = [...Object.values(FLYERS).map((f) => f.file), ...Object.values(DANCERS)];
 
 // ---------- audio ----------
 
@@ -160,7 +155,7 @@ export function scheduleClip(ac, dest, entry, info, zero) {
   const available = info.buf.duration - info.skip;
   const playLen = Math.min(entry.len ?? available, available);
   if (late >= playLen) return null;
-  const level = entry.vol * info.gain;
+  const level = entry.vol * info.gain * (bed ? 1 : FX_LEVEL);
   const { pts, end } = envelope(entry, level, playLen);
   const when = Math.max(now, zero + entry.t);
   const seek = bed && late > 0 ? late : 0;
@@ -180,6 +175,7 @@ export function scheduleClip(ac, dest, entry, info, zero) {
 let ctx = null;
 let master = null;
 const clips = new Map(); // clip name -> Promise<measured clip | null>
+const images = new Map(); // file -> preloaded Image (keeps it in the memory cache)
 
 function audioContext() {
   const AC = window.AudioContext || window.webkitAudioContext;
@@ -205,6 +201,12 @@ function clip(name) {
 
 /** Start fetching and decoding the clips (call once 58008 has been typed, before =). */
 export function preloadEasterEgg() {
+  for (const f of IMAGES) {
+    if (images.has(f)) continue;
+    const img = new Image();
+    img.src = CLIP_DIR + f;
+    images.set(f, img);
+  }
   if (!audioContext()) return;
   for (const s of SOUNDS) clip(s.clip);
 }
@@ -252,6 +254,7 @@ export function stopEasterEgg() {
 /** Start the montage. Must be called from inside the "=" key handler so audio may start. */
 export function playEasterEgg({ calcEl, lcdEl }) {
   if (show) return;
+  preloadEasterEgg();
   const overlay = document.createElement('div');
   overlay.className = 'mlg-overlay';
   overlay.setAttribute('aria-hidden', 'true');
@@ -296,6 +299,17 @@ export function playEasterEgg({ calcEl, lcdEl }) {
     document.body.classList.add('mlg-shake');
   };
   const flare = (x, y) => add('mlg-flare', '', { left: `${x}px`, top: `${y}px` }, 0.7);
+  /** An element holding one of the pictures; it removes itself if the file is missing. */
+  const picture = (cls, file, vars, life) => {
+    const el = add(cls, '', vars, life);
+    const img = document.createElement('img');
+    img.alt = '';
+    img.draggable = false;
+    img.onerror = () => el.remove();
+    img.src = CLIP_DIR + file;
+    el.appendChild(img);
+    return el;
+  };
 
   // sound: every clip on the audio clock, relative to the moment "=" was pressed
   const ac = audioContext();
@@ -341,21 +355,24 @@ export function playEasterEgg({ calcEl, lcdEl }) {
   });
   at(cue('hitmarker') + 0.4, () => text('360 NO SCOPE', W / 2, H * 0.62, 8, 1.2));
 
-  // 1.0-5.9: things flying across the screen
+  // dancers slide in on the sides after the shot and stay until the end
+  at(cue('hitmarker') + 0.15, () => {
+    for (const [edge, file] of Object.entries(DANCERS)) picture(`mlg-dancer mlg-${edge}`, file, {});
+  });
+
+  // 1.0-5.9: things thrown across the screen
   for (let i = 0; i < 20; i++) {
     at(1.0 + i * 0.24, () => {
-      const kind = FLYERS[i % FLYERS.length];
+      const kind = FLYERS[THROWS[i % THROWS.length]];
       const fromLeft = Math.random() < 0.5;
-      const size = rand(14, 24);
-      const px = (size * Math.min(W, H)) / 100;
-      const html =
-        kind === 'frog' ? '🐸' : kind === 'emoji' ? EMOJI[(Math.random() * EMOJI.length) | 0] : SVG[kind];
-      const x0 = fromLeft ? -px : W;
-      const x1 = fromLeft ? W : -px;
+      const size = rand(...kind.w);
+      const px = (size * 2 * Math.min(W, H)) / 100; // tall pictures: clear the edge fully
+      const x0 = fromLeft ? -px : W + px / 2;
+      const x1 = fromLeft ? W + px / 2 : -px;
       const y0 = rand(H * 0.3, H);
       const y1 = rand(H * 0.2, H);
       const dur = rand(1.2, 1.9);
-      add(`mlg-fly mlg-${kind === 'emoji' ? 'frog' : kind}`, html, {
+      picture('mlg-fly', kind.file, {
         '--s': `${size}vmin`, '--d': `${dur}s`,
         '--x0': `${x0}px`, '--y0': `${y0}px`,
         '--xm': `${(x0 + x1) / 2}px`, '--ym': `${Math.min(y0, y1) - rand(H * 0.2, H * 0.4)}px`,
@@ -374,7 +391,6 @@ export function playEasterEgg({ calcEl, lcdEl }) {
     text('OH BABY A TRIPLE', W / 2, H * 0.42, -5, 1.4);
     shake();
   });
-  at(2.6, () => add('mlg-illu', SVG.illuminati));
   at(3.3, () => flare(rand(W * 0.2, W * 0.8), rand(H * 0.2, H * 0.6)));
 
   // wow, deal with it

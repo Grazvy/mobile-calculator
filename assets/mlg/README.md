@@ -15,6 +15,16 @@ Type `58008` and press `=` to start the MLG montage ([js/easter.js](../../js/eas
 
 Voice lines never overlap each other. Effects are placed in the pauses between words.
 
+## Pictures
+
+| File | Use |
+|---|---|
+| `d-chip.png`, `d-package.png`, `mtn-d.png`, `illum.png` | thrown across the screen, spinning (20 throws, mostly chips), from 1.0 s |
+| `s-dog.gif` | dances on the left edge, from the first hitmarker to the end |
+| `mlg-frog.gif` | dances on the right edge, same time |
+
+Use PNG or GIF with a transparent background. A missing picture is skipped. The throw order and sizes are `FLYERS` / `THROWS` in `js/easter.js`; which dancer goes on which side is `DANCERS`.
+
 ## Format
 
 - **MP3**: plays in every browser, including iOS Safari.
@@ -23,4 +33,4 @@ Voice lines never overlap each other. Effects are placed in the pauses between w
 - Keep files small (under about 200 KB). Embedded cover art only adds download size: `damn-son.mp3` carries about 150 KB of it. `ffmpeg -i in.mp3 -map 0:a -c copy out.mp3` strips it.
 - If you replace a clip, check the times and lengths in the `SOUNDS` table in `js/easter.js`. Each entry is tuned to where the pauses fall in the current files.
 
-The clips are not in the service worker's precache list, because one missing file would break the offline install. They're cached the first time they play, and work offline after that. On iPhones the hardware silent switch mutes them.
+The clips and pictures are not in the service worker's precache list, because one missing file would break the offline install. They're cached the first time they play, and work offline after that. On iPhones the hardware silent switch mutes them.
