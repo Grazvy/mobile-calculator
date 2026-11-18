@@ -1,7 +1,7 @@
 {
-  "name": "SC-82 Scientific Calculator",
-  "short_name": "SC-82",
-  "description": "Two-line scientific calculator. Works offline.",
+  "name": "fx-85 PLUS Scientific Calculator",
+  "short_name": "fx-85 PLUS",
+  "description": "Natural-display scientific calculator. Works offline.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

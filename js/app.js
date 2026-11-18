@@ -50,6 +50,7 @@ function restartBlink() {
 
 function press(id) {
   calc.press(id);
+  lcd.follow();
   restartBlink();
   render();
 }
@@ -59,15 +60,58 @@ buildKeypad(document.getElementById('keys'), (id) => {
   press(id);
 });
 
-// Tap the display to move the cursor there.
+// Tap the display to move the cursor there; drag it (touch or mouse) to scroll.
+const DRAG_SLOP = 6; // px of movement before a press counts as a drag, not a tap
+let drag = null;
+
 canvas.addEventListener('pointerdown', (e) => {
+  if (e.button > 0) return;
   e.preventDefault();
+  canvas.setPointerCapture(e.pointerId);
+  drag = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false };
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < DRAG_SLOP) return;
+  drag.moved = true;
+  // the content follows the finger
+  lcd.scrollBy((drag.x - e.clientX) / lcd.pitch, (drag.y - e.clientY) / lcd.pitch);
+  drag.x = e.clientX;
+  drag.y = e.clientY;
+  render();
+});
+
+function endDrag(e, cancelled) {
+  if (!drag || e.pointerId !== drag.id) return;
+  const tap = !drag.moved && !cancelled;
+  drag = null;
+  if (!tap) return;
   haptic();
   calc.tap(lcd.hitTest(e.clientX, e.clientY));
   calc.save();
+  lcd.follow();
   restartBlink();
   render();
-});
+}
+canvas.addEventListener('pointerup', (e) => endDrag(e, false));
+canvas.addEventListener('pointercancel', (e) => endDrag(e, true));
+
+// Mouse wheel / trackpad: vertical wheel scrolls up/down, or sideways when the
+// input is only one line tall; shift+wheel and horizontal swipes scroll sideways.
+canvas.addEventListener(
+  'wheel',
+  (e) => {
+    e.preventDefault();
+    const unit = e.deltaMode === 1 ? 3 : e.deltaMode === 2 ? 30 : 1 / lcd.pitch; // → dots
+    let dx = e.deltaX * unit;
+    let dy = e.deltaY * unit;
+    if (e.shiftKey || (lcd.range.y === 0 && dx === 0)) [dx, dy] = [dx + dy, 0];
+    lcd.scrollBy(dx, dy);
+    render();
+  },
+  { passive: false },
+);
 
 window.addEventListener('keydown', (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;

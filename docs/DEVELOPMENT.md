@@ -21,7 +21,7 @@ Either:
 
 ## Releasing an update
 
-Bump `VERSION` in [sw.js](../sw.js) (for example `sc82-v5`) whenever you change any file, or phones keep the old cached copy. If you add a new file, also add it to the `ASSETS` list in `sw.js`.
+Bump `VERSION` in [sw.js](../sw.js) (for example `fx85-v8`) whenever you change any file, or phones keep the old cached copy. If you add a new file, also add it to the `ASSETS` list in `sw.js`.
 
 The service worker serves files from its cache first. After a deploy, an installed app opens on the old build, installs the new worker in the background, and then reloads itself once into the new build (the `controllerchange` handler in [js/app.js](../js/app.js)). Builds older than `sc82-v4` lack that handler, so phones still on them need one extra restart to pick up the update.
 
@@ -47,7 +47,7 @@ MODE picks COMP, SD or REG. SHIFT MODE (SETUP) sets the angle unit, Fix, Sci or 
 
 ## Features
 
-- **Natural display:** the whole LCD is one gapless dot matrix. Input is laid out like a textbook: stacked fractions, √ with an overbar, raised exponents, a lowered log base, and |Abs| bars. Brackets grow as tall as what they enclose. The input starts top-left and uses the whole screen as it grows taller; once it no longer fits, it scrolls (arrows show which way). The result appears bottom-right: decimals, `×10` with a raised exponent, stacked fractions or `2°30′36″`.
+- **Natural display:** the whole LCD is one dot matrix. Unlit dots stay faintly visible, and all dots share one size, so the gaps between them form a fine grid that runs through the text as well. Input is laid out like a textbook: stacked fractions, √ with an overbar, raised exponents, a lowered log base, and |Abs| bars. Empty template slots show as solid boxes. Brackets grow as tall as what they enclose. The input starts top-left and uses the whole screen as it grows taller; once it no longer fits, it follows the cursor (arrows show which way there is more). You can also scroll it by hand with the mouse wheel or by dragging (touch or mouse). The view stays where you left it until the next key press or tap. Tapping the display moves the cursor. The result appears bottom-right: decimals, `×10` with a raised exponent, stacked fractions or `2°30′36″`.
 - **Templates:** □/□, □□/□, √□, ∛□, x^□, ˣ√□, 10^□, e^□, Abs and log□□. A number typed just before □/□ or ˣ√□ becomes the numerator (or index), so `1 □/□ 2` still gives ½. □/□ right after a result divides Ans.
 - **Editing:** insert by default (SHIFT DEL toggles overwrite). ◀▶ step through every slot and wrap around the ends of the line. ▲▼ move between numerator and denominator (or base and exponent). Tapping the display puts the cursor at that spot, and tapping a result re-opens it for editing. DEL on a template's edge removes it but keeps its contents.
 - **COMP:** + − × ÷, powers and roots, x² x³ x⁻¹ x!, log/ln/log base/10ˣ/eˣ, Abs, trig, inverse trig and hyperbolic trig, nPr/nCr, Pol(/Rec(, %, Ran#, Rnd, π, e

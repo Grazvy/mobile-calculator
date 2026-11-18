@@ -1,7 +1,7 @@
 // Canvas LCD in the natural-display style: a row of status indicators above
 // one dot matrix that shows the input (top-left, textbook layout), the result
-// (bottom-right), menus and error screens. Dots are drawn without gaps so bars,
-// radicals and tall brackets read as continuous lines.
+// (bottom-right), menus and error screens. All dots share one size, so the
+// gaps between them show as a fine grid, through the text as well.
 
 import { layoutExpr, layoutText, layoutValue } from './layout.js';
 import { glyph } from './font.js';
@@ -11,6 +11,10 @@ export const COLS = 72; // 12 characters across, the same dot size as the old si
 const LINE = 8; // row pitch of text lines in menus / error screens
 const INK = 'rgba(22, 28, 20, 0.92)';
 const GHOST = 'rgba(22, 28, 20, 0.07)';
+const GRID = 'rgba(22, 28, 20, 0.05)'; // unlit dots: a faint matrix behind the text
+// Dot sizes as a share of the dot pitch (1 = no gap, smaller = wider gaps).
+const TEXT_DOT = 0.92; // lit dots: letters, digits, bars  <- adjust the letter grid gaps here
+const GRID_DOT = 0.84; // unlit dots: the faint background grid
 
 const INDICATORS = [
   ['S', 0.0], ['A', 0.055], ['M', 0.11], ['STO', 0.175], ['RCL', 0.27],
@@ -63,7 +67,30 @@ export class LcdRenderer {
     this.sy = 0; // vertical scroll of the input, in dots
     this.blink = true;
     this.frame = null; // geometry of the last render, for hitTest()
+    this.free = false; // true after a manual scroll: the view stops following the cursor
+    this.rem = [0, 0]; // sub-dot remainder of manual scrolling
+    this.pitch = 1; // dot pitch in CSS pixels, from the last render
+    this.range = { x: 0, y: 0 }; // how far the input can scroll, in dots
     this.resize();
+  }
+
+  /** Scroll the input by (dx, dy) dots; it stays put until follow() is called. */
+  scrollBy(dx, dy) {
+    this.free = true;
+    const step = (k, d) => {
+      this.rem[k] += d;
+      const n = Math.trunc(this.rem[k]);
+      this.rem[k] -= n;
+      return n;
+    };
+    this.sx = Math.max(0, Math.min(this.range.x, this.sx + step(0, dx)));
+    this.sy = Math.max(0, Math.min(this.range.y, this.sy + step(1, dy)));
+  }
+
+  /** Go back to keeping the cursor in view (after a key press or tap). */
+  follow() {
+    this.free = false;
+    this.rem = [0, 0];
   }
 
   resize() {
@@ -99,6 +126,7 @@ export class LcdRenderer {
 
     // --- dot matrix: everything below the indicators ---
     const pitch = inner / COLS;
+    this.pitch = pitch;
     const gy = iy + ih + w * 0.012;
     const rows = Math.max(LINE, Math.floor((h - gy - w * 0.025) / pitch));
     this.drawMatrix(view, pad, gy, pitch, rows);
@@ -112,6 +140,7 @@ export class LcdRenderer {
       // menus and error screens: plain text lines
       view.lines.forEach((line, k) => grid.draw(layoutText(line).ops, 1, 7 + k * LINE));
       this.sx = this.sy = 0;
+      this.range = { x: 0, y: 0 };
       if (view.more) marks = { more: true };
     } else {
       const isExpr = Array.isArray(view.expr);
@@ -125,7 +154,13 @@ export class LcdRenderer {
 
       const cursor = isExpr && view.cursor !== null && view.cursor !== undefined ? view.cursor : null;
       const caret = cursor === null ? null : lay.carets.find((c) => c.index === cursor);
-      if (!caret) {
+      this.range = {
+        x: Math.max(0, lay.w + 7 - COLS),
+        y: Math.max(0, lay.asc + lay.desc + 1 - avail),
+      };
+      if (this.free) {
+        // scrolled by hand (wheel / drag): keep that position, only clamp it
+      } else if (!caret) {
         this.sx = 0;
         this.sy = 0;
       } else {
@@ -134,13 +169,13 @@ export class LcdRenderer {
         const right = caret.x + 5;
         if (left - this.sx < 0) this.sx = left;
         if (right - this.sx > COLS - 2) this.sx = right - (COLS - 2);
-        this.sx = Math.max(0, Math.min(this.sx, Math.max(0, lay.w + 7 - COLS)));
         const ctop = lay.asc + caret.base - 8;
         const cbot = lay.asc + caret.base + 1;
         if (ctop - this.sy < 0) this.sy = ctop;
         if (cbot - this.sy > avail - 1) this.sy = cbot - (avail - 1);
-        this.sy = Math.max(0, Math.min(this.sy, Math.max(0, lay.asc + lay.desc + 1 - avail)));
       }
+      this.sx = Math.max(0, Math.min(this.sx, this.range.x));
+      this.sy = Math.max(0, Math.min(this.sy, this.range.y));
       const ox = 1 - this.sx;
       const oy = lay.asc - this.sy;
       grid.limit = Math.max(0, avail);
@@ -165,13 +200,25 @@ export class LcdRenderer {
       if (isExpr) this.frame = { x0, y0, pitch, ox, oy, carets: lay.carets };
     }
 
-    // paint the lit dots as one path so neighbouring dots merge without seams
+    // every dot, lit or not, has the same size, so the gaps form one fine grid
     const { ctx } = this;
+    const gd = pitch * GRID_DOT;
+    const td = pitch * TEXT_DOT;
+    ctx.fillStyle = GRID;
+    ctx.beginPath();
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < COLS; x++) {
+        if (!grid.get(x, y)) ctx.rect(x0 + x * pitch, y0 + y * pitch, gd, gd);
+      }
+    }
+    ctx.fill();
+
+    // lit dots on top
     ctx.fillStyle = INK;
     ctx.beginPath();
     for (let y = 0; y < rows; y++) {
       for (let x = 0; x < COLS; x++) {
-        if (grid.get(x, y)) ctx.rect(x0 + x * pitch, y0 + y * pitch, pitch + 0.02, pitch + 0.02);
+        if (grid.get(x, y)) ctx.rect(x0 + x * pitch, y0 + y * pitch, td, td);
       }
     }
     ctx.fill();

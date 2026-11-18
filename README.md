@@ -1,4 +1,4 @@
-# SC-82 calculator for mobile usage
+# fx-85 PLUS calculator for mobile usage
 
 Here is my own, everyday calcualtor app to use on mobile. 
 
