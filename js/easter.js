@@ -8,6 +8,8 @@ export const DURATION = 6.6; // seconds: the length of dubstep.mp3
 const FADE_AT = 6.2; // visuals start fading out
 const AUDIO_FADE_AT = 6.3; // everything still playing fades to silence by DURATION
 const LATE_LIMIT = 0.3; // a clip that is ready this late still plays, later ones are skipped
+const READY_TIMEOUT = 15000; // ms: start anyway if the clips / pictures / audio are not ready by then
+const LEAD = 0.1; // s: audio is scheduled this far ahead so every clip starts exactly on time
 const TARGET_RMS = 0.2; // clips are levelled to this loudness (about -14 dBFS) before `vol`
 const DUCK = 0.45; // the music drops to this while a voice line plays (about -7 dB)
 const FX_LEVEL = 0.7; // voices and effects sit about 3 dB lower than the music's levelled loudness
@@ -211,6 +213,15 @@ export function preloadEasterEgg() {
   for (const s of SOUNDS) clip(s.clip);
 }
 
+/** Resolves when a preloaded picture can be drawn (or has failed: it is skipped then). */
+function imageReady(img) {
+  if (img.decode) return img.decode().catch(() => {});
+  if (img.complete) return Promise.resolve();
+  return new Promise((resolve) => {
+    img.onload = img.onerror = () => resolve();
+  });
+}
+
 /** Resolves once the context is actually running (mobile browsers may hold it until the finger lifts). */
 function running(ac) {
   if (ac.state === 'running') return Promise.resolve();
@@ -227,14 +238,19 @@ function running(ac) {
 // ---------- the show ----------
 
 let show = null;
+let pending = null; // "=" was pressed, waiting for everything to be loaded
 
-/** True while the montage is on screen. */
+/** True while the montage is on screen or about to start. */
 export function easterEggPlaying() {
-  return show !== null;
+  return show !== null || pending !== null;
 }
 
 /** End the montage now (tap, Esc) or when it is over. */
 export function stopEasterEgg() {
+  if (pending) {
+    pending.cancel();
+    pending = null;
+  }
   if (!show) return;
   const s = show;
   show = null;
@@ -251,16 +267,67 @@ export function stopEasterEgg() {
   document.body.classList.remove('mlg-shake');
 }
 
-/** Start the montage. Must be called from inside the "=" key handler so audio may start. */
-export function playEasterEgg({ calcEl, lcdEl }) {
-  if (show) return;
+/**
+ * Start the montage. Must be called from inside the "=" key handler so audio may start.
+ * Nothing is shown until every clip is decoded, every picture loaded and the audio output is
+ * running, so the first run looks and sounds exactly like later ones.
+ */
+export function playEasterEgg(opts) {
+  if (show || pending) return;
+  const ac = audioContext();
+  const wake = () => ac && ac.resume().catch(() => {});
+  wake();
   preloadEasterEgg();
+  // phones only allow audio to start on the finger lifting, not on the touch itself
+  const gestures = ['pointerup', 'touchend', 'keyup', 'click'];
+  for (const g of gestures) window.addEventListener(g, wake, true);
+  let timer;
+  const p = {
+    cancel() {
+      clearTimeout(timer);
+      for (const g of gestures) window.removeEventListener(g, wake, true);
+    },
+  };
+  pending = p;
+  const ready = Promise.all([
+    ...SOUNDS.map((e) => clip(e.clip)),
+    ...IMAGES.map((f) => imageReady(images.get(f))),
+    ac ? running(ac) : null,
+  ]);
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(resolve, READY_TIMEOUT);
+  });
+  Promise.race([ready, timeout]).then(() => {
+    if (pending !== p) return; // cancelled
+    p.cancel();
+    pending = null;
+    runShow(opts, ac);
+  });
+}
+
+function runShow({ calcEl, lcdEl }, ac) {
   const overlay = document.createElement('div');
   overlay.className = 'mlg-overlay';
   overlay.setAttribute('aria-hidden', 'true');
   document.body.appendChild(overlay);
 
-  const s = { overlay, calcEl, timers: [], sources: [], start: performance.now() };
+  // sound: everything is decoded, so schedule it all now on the audio clock, a moment ahead
+  const sources = [];
+  let delay = 0; // s until montage second 0 is heard
+  if (ac && master) {
+    const zero = ac.currentTime + LEAD;
+    for (const entry of SOUNDS) {
+      clip(entry.clip).then((info) => {
+        if (!info || show !== s) return;
+        const src = scheduleClip(ac, master, entry, info, zero);
+        if (src) s.sources.push(src);
+      });
+    }
+    delay = LEAD + (ac.outputLatency || ac.baseLatency || 0);
+  }
+
+  // visuals: montage second 0 is when the first sound is heard
+  const s = { overlay, calcEl, timers: [], sources, start: performance.now() + delay * 1000 };
   show = s;
   const elapsed = () => (performance.now() - s.start) / 1000;
   const at = (t, fn) => s.timers.push(setTimeout(() => show === s && fn(), Math.max(0, t * 1000 - (performance.now() - s.start))));
@@ -311,35 +378,24 @@ export function playEasterEgg({ calcEl, lcdEl }) {
     return el;
   };
 
-  // sound: every clip on the audio clock, relative to the moment "=" was pressed
-  const ac = audioContext();
-  if (ac) {
-    ac.resume().catch(() => {});
-    const ready = running(ac);
-    for (const entry of SOUNDS) {
-      Promise.all([clip(entry.clip), ready]).then(([info]) => {
-        if (!info || show !== s) return;
-        const src = scheduleClip(ac, master, entry, info, ac.currentTime - elapsed());
-        if (src) s.sources.push(src);
-      });
-    }
-  }
-
   // 0.0: tint, MLG stamp, airhorn; the scope sweeps onto the display
-  calcEl.classList.add('mlg-tint');
-  text('MLG', W / 2, H * 0.16, -8, 0.5);
-  at(cue('damn-son'), () => text('DAMN SON', W / 2, H * 0.78, 7, 0.9));
   const D = Math.min(r.width * 0.85, Math.min(W, H) * 0.7);
   const side = Math.random() < 0.5 ? -1 : 1;
-  const scope = add('mlg-scope', '', {
-    left: `${cx}px`, top: `${cy}px`, '--d': `${D}px`,
-    '--sx': `${side * W * 0.45}px`, '--sy': `${H * rand(0.2, 0.35)}px`, '--sweep': `${cue('sniper')}s`,
+  let scope = null;
+  at(0, () => {
+    calcEl.classList.add('mlg-tint');
+    text('MLG', W / 2, H * 0.16, -8, 0.5);
+    scope = add('mlg-scope', '', {
+      left: `${cx}px`, top: `${cy}px`, '--d': `${D}px`,
+      '--sx': `${side * W * 0.45}px`, '--sy': `${H * rand(0.2, 0.35)}px`, '--sweep': `${cue('sniper')}s`,
+    });
   });
+  at(cue('damn-son'), () => text('DAMN SON', W / 2, H * 0.78, 7, 0.9));
 
   // the shot, then the hitmarker
   at(cue('sniper'), () => {
-    scope.classList.add('mlg-recoil');
-    at(cue('sniper') + 0.3, () => scope.remove());
+    scope?.classList.add('mlg-recoil');
+    at(cue('sniper') + 0.3, () => scope?.remove());
     add('mlg-flash', '', {}, 0.4);
     shake();
     flare(cx, cy);
