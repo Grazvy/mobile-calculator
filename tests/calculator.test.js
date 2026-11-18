@@ -37,20 +37,19 @@ test('Ans chaining and repeat with =', () => {
   assert.equal(lower(calc('3 eq 4 eq')), '4.'); // a digit starts a new calculation
 });
 
-test('fractions and display toggles', () => {
-  const c = calc('1 frac 2 add 1 frac 3 eq');
-  assert.equal(lower(c), '5⌟6');
-  c.press('frac');
+test('fractions and the S⇔D key', () => {
+  const c = calc('1 frac 2 right add 1 frac 3 eq');
+  assert.equal(lower(c), '5/6');
+  c.press('sd');
   assert.equal(lower(c), '0.833333333');
-  c.press('frac');
-  assert.equal(lower(c), '5⌟6');
-  const d = calc('3 frac 1 frac 2 eq');
-  assert.equal(lower(d), '3⌟1⌟2');
-  d.press('shift');
-  d.press('frac');
-  assert.equal(lower(d), '7⌟2');
-  const e = calc('0 dot 75 eq frac');
-  assert.equal(lower(e), '3⌟4');
+  c.press('sd');
+  assert.equal(lower(c), '5/6');
+  const d = calc('3 shift frac 1 right 2 eq'); // mixed number template
+  assert.equal(lower(d), '3 1/2');
+  calc('shift sd', d);
+  assert.equal(lower(d), '7/2');
+  assert.equal(lower(calc('0 dot 75 eq sd')), '3/4');
+  assert.equal(lower(calc('1 div 4 sd')), '1/4'); // S⇔D while typing calculates first
 });
 
 test('sexagesimal toggle', () => {
@@ -66,45 +65,43 @@ test('ENG notation', () => {
   assert.equal(lower(c), '56.088e03');
   c.press('eng');
   assert.equal(lower(c), '56088.e00');
-  c.press('shift');
-  c.press('eng');
-  c.press('shift');
-  c.press('eng');
+  calc('shift eng shift eng', c);
   assert.equal(lower(c), '0.056088e06');
 });
 
-test('editing: cursor, overwrite, insert, delete', () => {
-  const c = calc('1 2 3');
-  c.press('left');
-  c.press('left');
-  c.press('9'); // overwrite "2"
-  assert.equal(upper(c), '193');
-  c.press('shift');
-  c.press('del'); // insert mode
-  c.press('5');
-  assert.equal(upper(c), '1953');
-  c.press('del'); // insert mode deletes left of cursor
-  assert.equal(upper(c), '193');
+test('editing: insert by default, overwrite via SHIFT DEL', () => {
+  const c = calc('1 2 3 left left 9');
+  assert.equal(upper(c), '1923'); // inserted
+  c.press('del'); // deletes left of the cursor
+  assert.equal(upper(c), '123');
+  calc('shift del 5', c); // overwrite mode replaces the "2"
+  assert.equal(upper(c), '153');
   c.press('eq');
-  assert.equal(lower(c), '193.');
-  c.press('left'); // back into the expression
+  assert.equal(lower(c), '153.');
+  c.press('left'); // back into the expression, cursor at the end
   c.press('del');
   c.press('eq');
-  assert.equal(lower(c), '19.');
+  assert.equal(lower(c), '15.');
+});
+
+test('◀▶ wrap around the line', () => {
+  const c = calc('1 2 left left');
+  assert.equal(c.cur, 0);
+  c.press('left');
+  assert.equal(c.cur, 2);
+  c.press('right');
+  assert.equal(c.cur, 0);
 });
 
 test('errors and recovery', () => {
   const c = calc('1 div 0 eq');
   assert.equal(upper(c), 'Math ERROR');
   assert.equal(c.view().lower, null);
+  assert.deepEqual(c.view().lines, ['Math ERROR', '', '[AC] :Cancel', '[◀][▶]:Goto']);
   c.press('left');
   assert.equal(c.phase, 'edit');
   assert.equal(c.cur, 1); // cursor at the ÷
-  c.press('right');
-  c.press('right');
-  c.press('del');
-  c.press('2');
-  c.press('eq');
+  calc('right right del 2 eq', c);
   assert.equal(lower(c), '0.5');
   const s = calc('2 add eq');
   assert.equal(upper(s), 'Syntax ERROR');
@@ -126,12 +123,13 @@ test('memory: STO, RCL, ALPHA, M+', () => {
   assert.equal(lower(c), '7.');
   calc('ac 2 shift mplus rcl mplus', c);
   assert.equal(lower(c), '5.');
+  assert.equal(upper(calc('7 shift rcl sd')), '7→Y'); // Y lives on S⇔D
 });
 
 test('memory persists through storage', () => {
   const storage = new MemStorage();
   const a = new Calculator({ storage });
-  calc('1 frac 3 shift rcl rp mode mode 2', a); // X = 1/3, Rad
+  calc('1 frac 3 shift rcl rp shift mode 2', a); // X = 1/3, Rad
   const b = new Calculator({ storage });
   assert.equal(b.angle, 'R');
   calc('alpha rp mul 3 eq', b);
@@ -155,17 +153,21 @@ test('replay history', () => {
   assert.equal(lower(c), '7.');
 });
 
-test('modes: angle units, Fix, Sci, CLR', () => {
-  assert.equal(lower(calc('mode mode 2 sin lp shift exp div 2 eq')), '1.');
-  assert.equal(lower(calc('mode mode mode 1 3 1 div 3 eq')), '0.333');
-  const c = calc('mode mode mode 2 3 1234 eq');
+test('MODE and SETUP menus', () => {
+  assert.deepEqual(calc('mode').view().lines, ['1:COMP', '2:SD  3:REG']);
+  assert.deepEqual(calc('shift mode').view().lines, ['1:Deg 2:Rad', '3:Gra 4:Fix', '5:Sci 6:Norm']);
+  assert.deepEqual(calc('shift mode down').view().lines, ['1:ab/c', '2:d/c']);
+  assert.equal(lower(calc('shift mode 2 sin lp shift exp div 2 eq')), '1.');
+  assert.equal(lower(calc('shift mode 4 3 1 div 3 eq')), '0.333');
+  const c = calc('shift mode 5 3 1234 eq');
   assert.equal(lower(c), '1.23e03');
   assert.equal(c.view().ind.SCI, true);
-  calc('shift mode 2', c);
+  calc('shift 9 2', c); // CLR: Mode
   assert.equal(upper(c), 'Mode clear');
   calc('ac 1234 eq', c);
   assert.equal(lower(c), '1234.');
   assert.equal(c.view().upper, '1234');
+  assert.equal(lower(calc('shift mode down 2 1 frac 3 right mul 4 eq')), '4/3'); // d/c: improper results
 });
 
 test('hyp and inverse trig keys', () => {
@@ -174,9 +176,12 @@ test('hyp and inverse trig keys', () => {
   assert.equal(lower(calc('shift cos 0 eq')), '90.');
 });
 
-test('DRG▶ menu and %', () => {
+test('DRG▶ menu, %, nPr/nCr, Pol', () => {
   assert.equal(lower(calc('shift exp shift ans 2 eq')), '180.'); // π r → degrees
-  assert.equal(lower(calc('200 mul 15 shift eq')), '30.');
+  assert.equal(lower(calc('200 mul 15 shift lp eq')), '30.');
+  assert.equal(lower(calc('5 shift div 2 eq')), '10.'); // 5C2
+  assert.equal(lower(calc('5 shift mul 2 eq')), '20.'); // 5P2
+  assert.equal(lower(calc('pol 3 shift rp 4 rp eq')), '5.');
 });
 
 test('SD statistics', () => {
@@ -187,21 +192,21 @@ test('SD statistics', () => {
   assert.equal(lower(c), '4.');
   calc('shift 2 1 eq', c); // x̄
   assert.equal(lower(c), '2.5');
-  calc('5 shift comma 2 mplus', c); // 5 with frequency 2
+  calc('5 shift rp 2 mplus', c); // 5 with frequency 2
   assert.equal(lower(c), '6.');
   calc('shift 1 3 eq', c); // n
   assert.equal(lower(c), '6.');
-  calc('shift mode 1', c); // Scl
+  calc('shift 9 1', c); // Scl
   calc('ac shift 2 1 eq', c);
   assert.equal(upper(c), 'Math ERROR');
 });
 
 test('REG linear regression', () => {
-  const c = calc('mode 3 1 comma 3 mplus 2 comma 5 mplus 3 comma 7 mplus');
+  const c = calc('mode 3 1 shift rp 3 mplus 2 shift rp 5 mplus 3 shift rp 7 mplus');
   assert.equal(lower(c), '3.');
   calc('shift 2 right right 2 eq', c); // B
   assert.equal(lower(c), '2.');
-  calc('10 shift 2 left 2 eq', c); // 10 ŷ
+  calc('10 shift 2 left 5 eq', c); // 10 ŷ
   assert.equal(lower(c), '21.');
 });
 
@@ -212,4 +217,74 @@ test('power off and on', () => {
   assert.equal(c.view().on, false);
   c.press('on');
   assert.equal(lower(c), '0.');
+});
+
+test('natural display templates', () => {
+  assert.equal(lower(calc('sqrt 16 eq')), '4.');
+  assert.equal(lower(calc('sqrt 2 right sq eq')), '2.');
+  assert.equal(lower(calc('2 pow 10 eq')), '1024.');
+  assert.equal(lower(calc('2 pow 3 right add 1 eq')), '9.');
+  assert.equal(lower(calc('3 shift pow 8 eq')), '2.');
+  assert.equal(lower(calc('shift sqrt 27 eq')), '3.');
+  assert.equal(lower(calc('2 shift sq eq')), '8.');
+  assert.equal(lower(calc('shift log 2 eq')), '100.');
+  assert.equal(lower(calc('12 frac 4 eq')), '3.');
+  assert.equal(lower(calc('2 frac 4 right mul 3 eq')), '1 1/2');
+  assert.equal(upper(calc('1 frac 2 right add sqrt 3')), '1/2+√3');
+  assert.equal(lower(calc('abs neg 3 eq')), '3.');
+  assert.equal(lower(calc('logb 2 right 8 eq')), '3.');
+  assert.equal(upper(calc('logb 1 right 8 eq')), 'Math ERROR');
+  assert.equal(lower(calc('alpha exp eq')), '2.718281828');
+  const c = calc('5 eq pow 2 eq'); // power of the previous result
+  assert.equal(upper(c), 'Ans^2');
+  assert.equal(lower(c), '25.');
+  const f = calc('5 eq frac 2 eq'); // □/□ after a result divides Ans
+  assert.equal(upper(f), 'Ans/2');
+  assert.equal(lower(f), '2 1/2');
+});
+
+test('templates: empty slot, delete, overwrite', () => {
+  const e = calc('frac 3 eq');
+  assert.equal(upper(e), 'Syntax ERROR');
+  e.press('left');
+  assert.equal(e.cur, 3); // cursor in the empty denominator
+  assert.deepEqual(calc('sqrt del').buf, []); // empty template removed
+  assert.deepEqual(calc('sqrt 9 del').buf, ['tSqrt', 'tEnd']);
+  assert.deepEqual(calc('sqrt 9 left del').buf, ['9']); // DEL on the √ unwraps it
+  const o = calc('shift del 1 frac 2 left left 5'); // overwrite never replaces the fraction separator
+  assert.equal(upper(o), '15/2');
+  const b = calc('sqrt 9 right del');
+  assert.equal(b.cur, 2); // backspace onto the end steps inside
+  assert.equal(b.buf.length, 3);
+});
+
+test('up/down move between numerator and denominator', () => {
+  const c = calc('12 frac 34'); // cursor at the end of the denominator
+  const sep = c.buf.indexOf('tSep');
+  c.press('up');
+  assert.ok(c.cur > 0 && c.cur <= sep, 'cursor moved into the numerator');
+  c.press('down');
+  assert.ok(c.cur > sep, 'cursor back in the denominator');
+  const p = calc('2 pow 3 left left'); // cursor before the exponent template
+  p.press('up');
+  assert.equal(p.cur, 2); // into the exponent
+  calc('ac 7 up', c); // single line: nothing above, cursor stays
+  assert.equal(c.cur, 1);
+});
+
+test('tap moves the cursor', () => {
+  const c = calc('1 add 2 add 3');
+  c.tap(2);
+  c.press('9');
+  assert.equal(upper(c), '1+92+3'); // inserted at the tapped position
+  c.press('eq');
+  c.tap(0); // tapping a result re-opens it for editing
+  assert.equal(c.phase, 'edit');
+  assert.equal(c.cur, 0);
+  const e = calc('1 div 0 eq');
+  e.tap(null);
+  assert.equal(e.phase, 'edit');
+  const m = calc('mode');
+  m.tap(0);
+  assert.equal(m.phase, 'menu');
 });

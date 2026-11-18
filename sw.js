@@ -1,6 +1,6 @@
 // Offline support: precache the whole app, then serve it cache-first.
 // Bump VERSION whenever any file changes so phones pick up the new build.
-const VERSION = 'sc82-v2';
+const VERSION = 'sc82-v4';
 
 const ASSETS = [
   './',
@@ -12,6 +12,7 @@ const ASSETS = [
   'js/display.js',
   'js/font.js',
   'js/keys.js',
+  'js/layout.js',
   'js/engine/evaluate.js',
   'js/engine/format.js',
   'js/engine/fraction.js',

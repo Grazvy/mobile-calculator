@@ -196,6 +196,7 @@ export function evaluate(tree, ctx) {
       case 'atom': {
         const name = node.name;
         if (name === 'pi') return Math.PI;
+        if (name === 'euler') return Math.E;
         if (name === 'ans') return ctx.ans ?? ZERO;
         if (name === 'ran') return new Fraction(BigInt(Math.floor(ctx.random() * 1000)), 1000n);
         if (name[0] === 'v' && name.length === 2) return ctx.vars[name[1]] ?? ZERO;
@@ -215,6 +216,12 @@ export function evaluate(tree, ctx) {
             return check(isF(a) && isF(b) ? a.div(b) : toNum(a) / toNum(b), pos);
           case 'pow':
             return check(power(a, b, pos), pos);
+          case 'logb': {
+            const base = toNum(a);
+            const x = toNum(b);
+            if (!(base > 0) || base === 1 || !(x > 0)) throw mathErr(pos);
+            return check(Math.log(x) / Math.log(base), pos);
+          }
           case 'xrt':
             return check(root(a, b, pos), pos);
           case 'npr':
@@ -228,7 +235,7 @@ export function evaluate(tree, ctx) {
       case 'frac': {
         flags.frac = true;
         const vals = node.parts.map(ev);
-        const exact = vals.every((v) => isF(v) && v.isInteger());
+        const exact = vals.every((v) => isF(v));
         const den = vals[vals.length - 1];
         if (isF(den) ? den.isZero() : den === 0) throw mathErr(pos);
         if (exact) {
@@ -281,6 +288,7 @@ export function evaluate(tree, ctx) {
     const x = toNum(v);
     switch (fn) {
       case 'neg': return isF(v) ? v.neg() : -v;
+      case 'abs': return isF(v) ? (v.n < 0n ? v.neg() : v) : Math.abs(x);
       case 'sqrt':
         if (x < 0) throw mathErr(pos);
         return exactSqrt(v) ?? Math.sqrt(x);

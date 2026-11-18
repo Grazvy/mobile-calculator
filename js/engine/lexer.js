@@ -1,8 +1,23 @@
 // Turns the key-token buffer into lexemes: runs of digit / "." / EXP tokens
-// become one numeric literal; every other token passes through unchanged.
+// become one numeric literal; natural-display template markers are expanded
+// into bracketed plain lexemes; every other token passes through unchanged.
 
 import { Fraction } from './fraction.js';
-import { CalcError, DIGITS } from './tokens.js';
+import { CalcError, DIGITS, TEMPLATE_START } from './tokens.js';
+
+// Lexemes emitted for each template marker. Every template is wrapped in an
+// outer bracket pair so it behaves as one operand.
+const OPEN = {
+  tFrac: ['lp', 'lp'], tMixed: ['lp', 'lp'], tRoot: ['lp', 'lp'], tLogb: ['lp', 'lp'],
+  tAbs: ['lp', 'abs', 'lp'],
+  tSqrt: ['lp', 'sqrt', 'lp'], tCbrt: ['lp', 'cbrt', 'lp'],
+  tTenx: ['lp', 'tenx', 'lp'], tEx: ['lp', 'ex', 'lp'],
+  tPow: ['pow', 'lp'],
+};
+const SEP = {
+  tFrac: ['rp', 'frac', 'lp'], tMixed: ['rp', 'frac', 'lp'], tRoot: ['rp', 'xrt', 'lp'], tLogb: ['rp', 'logb', 'lp'],
+};
+const CLOSE = { tPow: ['rp'] };
 
 function literal(mant, exp) {
   if (Math.abs(exp) > 150) return Number(`${mant}e${exp}`); // overflow is caught later
@@ -11,6 +26,7 @@ function literal(mant, exp) {
 
 export function lex(tokens) {
   const out = [];
+  const stack = [];
   let i = 0;
   while (i < tokens.length) {
     const t = tokens[i];
@@ -39,6 +55,24 @@ export function lex(tokens) {
       if (mant.startsWith('.')) mant = '0' + mant;
       if (mant.endsWith('.')) mant += '0';
       out.push({ t: 'num', value: literal(mant, exp), decimal: dots > 0, pos: start });
+      continue;
+    }
+    if (TEMPLATE_START.has(t) || t === 'tSep' || t === 'tEnd') {
+      let seq;
+      if (TEMPLATE_START.has(t)) {
+        stack.push(t);
+        seq = OPEN[t];
+      } else {
+        const tpl = stack[stack.length - 1];
+        if (!tpl) throw new CalcError('Syntax', i);
+        if (t === 'tSep') seq = SEP[tpl] || ['rp', 'comma', 'lp'];
+        else {
+          stack.pop();
+          seq = CLOSE[tpl] || ['rp', 'rp'];
+        }
+      }
+      for (const x of seq) out.push({ t: x, pos: i });
+      i++;
       continue;
     }
     out.push({ t, pos: i });

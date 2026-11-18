@@ -5,24 +5,30 @@ import { parse } from './engine/parser.js';
 import { evaluate, round15, toNum } from './engine/evaluate.js';
 import { Fraction } from './engine/fraction.js';
 import { dmsString, formatLower, fractionString, rationalOf } from './engine/format.js';
-import { BINARY, CalcError, POSTFIX, tokensText } from './engine/tokens.js';
+import { BINARY, CH, CalcError, POSTFIX, SLOTS, TEMPLATE_START, isMarker } from './engine/tokens.js';
+import { layoutExpr, linearText } from './layout.js';
 
 const STORAGE_KEY = 'sci82.state.v1';
 const MAX_TOKENS = 99;
 const MAX_HISTORY = 30;
 const VAR_NAMES = ['A', 'B', 'C', 'D', 'E', 'F', 'X', 'Y', 'M'];
 // keys that carry a red ALPHA variable letter
-const VAR_KEYS = { neg: 'A', dms: 'B', hyp: 'C', sin: 'D', cos: 'E', tan: 'F', rp: 'X', comma: 'Y', mplus: 'M' };
+const VAR_KEYS = { neg: 'A', dms: 'B', hyp: 'C', sin: 'D', cos: 'E', tan: 'F', rp: 'X', sd: 'Y', mplus: 'M' };
 const DIGIT_KEYS = new Set(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
 const PLAIN_TOKEN = {
-  dot: '.', exp: 'EE', add: 'add', sub: 'sub', mul: 'mul', div: 'div', pow: 'pow',
-  sqrt: 'sqrt', sq: 'sq', cube: 'cube', inv: 'inv', ncr: 'ncr', pol: 'pol',
-  log: 'log', ln: 'ln', neg: 'neg', lp: 'lp', rp: 'rp', comma: 'comma', ans: 'ans',
+  dot: '.', exp: 'EE', add: 'add', sub: 'sub', mul: 'mul', div: 'div',
+  sq: 'sq', inv: 'inv', pol: 'pol', log: 'log', ln: 'ln', neg: 'neg', lp: 'lp', rp: 'rp', ans: 'ans',
 };
 const SHIFT_TOKEN = {
-  inv: 'fact', ncr: 'npr', pol: 'rec', cube: 'cbrt', pow: 'xrt', log: 'tenx', ln: 'ex',
-  comma: 'semi', 0: 'rnd', dot: 'ran', exp: 'pi',
+  inv: 'fact', pol: 'rec', sq: 'cube', mul: 'npr', div: 'ncr', lp: 'pct', rp: 'comma',
+  0: 'rnd', dot: 'ran', exp: 'pi',
 };
+// keys that insert a natural-display template (a b/c is handled separately)
+const PLAIN_TEMPLATE = { sqrt: 'tSqrt', pow: 'tPow', abs: 'tAbs', logb: 'tLogb' };
+const SHIFT_TEMPLATE = { sqrt: 'tCbrt', pow: 'tRoot', log: 'tTenx', ln: 'tEx' };
+// templates whose first slot takes the number typed just before the key
+const CAPTURE = new Set(['tFrac', 'tMixed', 'tRoot']);
+const isNumberTok = (t) => DIGIT_KEYS.has(t) || t === '.' || t === 'EE';
 
 const ZERO = Fraction.of(0);
 const isF = (v) => v instanceof Fraction;
@@ -31,45 +37,46 @@ const negVal = (v) => (isF(v) ? v.neg() : -v);
 
 const DEFAULT_SETTINGS = () => ({ mode: 'COMP', angle: 'D', fmt: { type: 'Norm', n: 1 }, dc: false });
 
+// Menus: pages of numbered items (a digit key picks one) or a single prompt line.
+const item = (label, token) => ({ label, token });
 const MENUS = {
-  mode1: [{ text: 'COMP SD  REG', items: ['COMP', 'SD', 'REG'] }],
-  mode2: [{ text: 'Deg Rad Gra', items: ['Deg', 'Rad', 'Gra'] }],
-  mode3: [{ text: 'Fix Sci Norm', items: ['Fix', 'Sci', 'Norm'] }],
-  mode4: [{ text: 'Disp', items: ['Disp'] }],
-  disp: [{ text: 'ab/c d/c', items: ['ab/c', 'd/c'] }],
-  fix: [{ text: 'Fix 0~9?', items: [] }],
-  sci: [{ text: 'Sci 0~9?', items: [] }],
-  norm: [{ text: 'Norm 1~2?', items: [] }],
-  clrComp: [{ text: 'Mcl Mode All', items: ['Mcl', 'Mode', 'All'] }],
-  clrStat: [{ text: 'Scl Mode All', items: ['Scl', 'Mode', 'All'] }],
-  drg: [{ text: 'D   R   G', items: ['D', 'R', 'G'], tokens: ['udeg', 'urad', 'ugra'] }],
-  ssumSD: [{ text: 'Σx²  Σx  n', items: ['Σx²', 'Σx', 'n'], tokens: ['sx2', 'sx', 'sn'] }],
-  ssumREG: [
-    { text: 'Σx²  Σx  n', items: ['Σx²', 'Σx', 'n'], tokens: ['sx2', 'sx', 'sn'] },
-    { text: 'Σy² Σy  Σxy', items: ['Σy²', 'Σy', 'Σxy'], tokens: ['sy2', 'sy', 'sxy'] },
+  mode: [[item('COMP'), item('SD'), item('REG')]],
+  setup: [
+    [item('Deg'), item('Rad'), item('Gra'), item('Fix'), item('Sci'), item('Norm')],
+    [item('ab/c'), item('d/c')],
   ],
-  svarSD: [{ text: ' xσn xσn-1', items: ['', 'xσn', 'xσn-1'], tokens: ['mx', 'sxn', 'sxn1'] }],
+  fix: { prompt: 'Fix 0~9?' },
+  sci: { prompt: 'Sci 0~9?' },
+  norm: { prompt: 'Norm 1~2?' },
+  clrComp: [[item('Mcl'), item('Mode'), item('All')]],
+  clrStat: [[item('Scl'), item('Mode'), item('All')]],
+  drg: [[item('°', 'udeg'), item('r', 'urad'), item('g', 'ugra')]],
+  ssumSD: [[item('Σx²', 'sx2'), item('Σx', 'sx'), item('n', 'sn')]],
+  ssumREG: [
+    [item('Σx²', 'sx2'), item('Σx', 'sx'), item('n', 'sn')],
+    [item('Σy²', 'sy2'), item('Σy', 'sy'), item('Σxy', 'sxy')],
+  ],
+  svarSD: [[item(CH.XBAR, 'mx'), item('xσn', 'sxn'), item('xσn-1', 'sxn1')]],
   svarREG: [
-    { text: ' xσn xσn-1', items: ['', 'xσn', 'xσn-1'], tokens: ['mx', 'sxn', 'sxn1'] },
-    { text: ' yσn yσn-1', items: ['', 'yσn', 'yσn-1'], tokens: ['my', 'syn', 'syn1'] },
-    { text: 'A   B   r', items: ['A', 'B', 'r'], tokens: ['ra', 'rb', 'rr'] },
-    { text: '    ', items: ['', ''], tokens: ['xhat', 'yhat'] },
+    [item(CH.XBAR, 'mx'), item('xσn', 'sxn'), item('xσn-1', 'sxn1')],
+    [item(CH.YBAR, 'my'), item('yσn', 'syn'), item('yσn-1', 'syn1')],
+    [item('A', 'ra'), item('B', 'rb'), item('r', 'rr'), item(CH.XHAT, 'xhat'), item(CH.YHAT, 'yhat')],
   ],
 };
-const MODE_PAGES = ['mode1', 'mode2', 'mode3', 'mode4'];
 
-/** Place the selection digits on the 10-cell lower line under each menu word. */
-function menuLower(page) {
-  const cells = Array.from({ length: 10 }, () => ({ ch: ' ', dp: false }));
-  let from = 0;
-  page.items.forEach((label, k) => {
-    const start = page.text.indexOf(label, from);
-    from = start + label.length;
-    const center = start + label.length / 2;
-    const cell = Math.max(0, Math.min(9, Math.round((center / 12) * 10 - 0.5)));
-    cells[cell] = { ch: String(k + 1), dp: false };
-  });
-  return { neg: false, cells, exp: null };
+/** Text lines for a menu page: "1:Deg  2:Rad", two 6-character columns when they fit. */
+export function menuLines(page) {
+  const cells = page.map((it, k) => `${k + 1}:${it.label}`);
+  const lines = [];
+  for (let k = 0; k < cells.length; k++) {
+    const a = cells[k];
+    const b = cells[k + 1];
+    if (b !== undefined && a.length <= 5 && b.length <= 6) {
+      lines.push(a.padEnd(6) + b);
+      k++;
+    } else lines.push(a);
+  }
+  return lines;
 }
 
 function encode(v) {
@@ -104,7 +111,7 @@ export class Calculator {
   clearLine() {
     this.buf = [];
     this.cur = 0;
-    this.ins = false;
+    this.ins = true; // natural display: insert by default
     this.phase = 'edit';
     this.shift = false;
     this.alpha = false;
@@ -112,7 +119,8 @@ export class Calculator {
     this.await = null;
     this.menu = null;
     this.error = null;
-    this.upperFixed = '';
+    this.upperTokens = null; // expression shown on the dot-matrix area (result phase)
+    this.upperText = ''; // suffix after it, or a plain message
     this.hist = -1;
     this.lastTokens = null;
     this.dtRepeat = null;
@@ -188,6 +196,7 @@ export class Calculator {
       if (key === 'ac') return;
     }
     if (alpha) {
+      if (key === 'exp') return this.insert('euler');
       const v = VAR_KEYS[key];
       if (v) this.insert('v' + v);
       return;
@@ -203,6 +212,7 @@ export class Calculator {
 
   plainKey(key, hyp) {
     if (DIGIT_KEYS.has(key)) return this.insert(key);
+    if (PLAIN_TEMPLATE[key]) return this.insertTemplate(PLAIN_TEMPLATE[key]);
     if (PLAIN_TOKEN[key]) return this.insert(PLAIN_TOKEN[key]);
     const result = this.phase === 'result';
     switch (key) {
@@ -211,7 +221,9 @@ export class Calculator {
       case 'tan':
         return this.insert(hyp ? key + 'h' : key);
       case 'frac':
-        return result ? this.toggleFrac(false) : this.insert('frac');
+        return this.insertTemplate('tFrac');
+      case 'sd':
+        return this.sdKey(false);
       case 'dms':
         return result ? this.toggleDms() : this.insert('dms');
       case 'eng':
@@ -228,7 +240,7 @@ export class Calculator {
       case 'eq':
         return this.equals();
       case 'mode':
-        return this.openMenu('mode1');
+        return this.openMenu('mode');
       case 'left':
       case 'right':
       case 'up':
@@ -239,6 +251,7 @@ export class Calculator {
 
   shiftKey(key, hyp) {
     if (SHIFT_TOKEN[key]) return this.insert(SHIFT_TOKEN[key]);
+    if (SHIFT_TEMPLATE[key]) return this.insertTemplate(SHIFT_TEMPLATE[key]);
     const result = this.phase === 'result';
     const stat = this.mode !== 'COMP';
     switch (key) {
@@ -247,7 +260,9 @@ export class Calculator {
       case 'tan':
         return this.insert('a' + key + (hyp ? 'h' : ''));
       case 'frac':
-        return result ? this.toggleFrac(true) : undefined;
+        return this.insertTemplate('tMixed');
+      case 'sd':
+        return this.sdKey(true);
       case 'dms':
         if (result) this.disp = { ...this.disp, mode: 'dec' };
         return;
@@ -262,6 +277,8 @@ export class Calculator {
         if (this.phase === 'edit') this.ins = !this.ins;
         return;
       case 'mode':
+        return this.openMenu('setup');
+      case '9':
         return this.openMenu(stat ? 'clrStat' : 'clrComp');
       case '1':
         return stat ? this.openMenu(this.mode === 'SD' ? 'ssumSD' : 'ssumREG') : undefined;
@@ -269,9 +286,6 @@ export class Calculator {
         return stat ? this.openMenu(this.mode === 'SD' ? 'svarSD' : 'svarREG') : undefined;
       case 'ans':
         return this.openMenu('drg');
-      case 'eq':
-        this.insert('pct');
-        return this.equals();
       case 'left':
       case 'right':
       case 'up':
@@ -285,29 +299,114 @@ export class Calculator {
       const chain = BINARY.has(tok) || POSTFIX.has(tok);
       this.buf = chain ? ['ans', tok] : [tok];
       this.cur = this.buf.length;
-      this.ins = false;
+      this.ins = true; // natural display: insert by default
       this.phase = 'edit';
       this.hist = -1;
       this.dtRepeat = null;
       return;
     }
-    const overwrite = !this.ins && this.cur < this.buf.length;
+    // overwrite mode never replaces a template marker
+    const overwrite = !this.ins && this.cur < this.buf.length && !isMarker(this.buf[this.cur]);
     if (overwrite) this.buf[this.cur] = tok;
     else if (this.buf.length < MAX_TOKENS) this.buf.splice(this.cur, 0, tok);
     else return;
     this.cur++;
   }
 
+  /** Insert an empty template (fraction, root, power...) and move into its first free slot. */
+  insertTemplate(kind) {
+    const tpl = [kind, ...Array(SLOTS[kind] - 1).fill('tSep'), 'tEnd'];
+    if (this.phase === 'result') {
+      // continue from the result like a binary operator would
+      if (kind === 'tPow') this.startLine(['ans', ...tpl], 2);
+      else if (kind === 'tFrac') this.startLine([kind, 'ans', 'tSep', 'tEnd'], 3);
+      else if (kind === 'tRoot') this.startLine([kind, 'ans', 'tSep', 'tEnd'], 3);
+      else this.startLine(tpl, 1);
+      return;
+    }
+    if (this.buf.length + tpl.length > MAX_TOKENS) return;
+    let captured = [];
+    if (CAPTURE.has(kind)) {
+      let s = this.cur;
+      while (s > 0 && isNumberTok(this.buf[s - 1])) s--;
+      captured = this.buf.splice(s, this.cur - s);
+      this.cur = s;
+    }
+    this.buf.splice(this.cur, 0, kind, ...captured, ...tpl.slice(1));
+    this.cur += captured.length ? captured.length + 2 : 1;
+  }
+
+  startLine(buf, cur) {
+    this.buf = buf;
+    this.cur = cur;
+    this.ins = true; // natural display: insert by default
+    this.phase = 'edit';
+    this.hist = -1;
+    this.dtRepeat = null;
+  }
+
   del() {
     if (this.phase === 'result') return this.editLast('left');
-    if (this.ins || this.cur >= this.buf.length) {
-      if (this.cur > 0) {
-        this.buf.splice(this.cur - 1, 1);
-        this.cur--;
-      }
-    } else {
-      this.buf.splice(this.cur, 1);
+    const buf = this.buf;
+    const next = buf[this.cur];
+    // the end of a template slot behaves like the end of the line
+    const slotEnd = this.cur >= buf.length || next === 'tSep' || next === 'tEnd';
+    let at = this.cur;
+    if (this.ins || slotEnd) {
+      if (this.cur === 0) return;
+      at = this.cur - 1;
     }
+    const t = buf[at];
+    if (t === 'tEnd') {
+      this.cur = at; // step into the template's last slot instead of deleting it
+      return;
+    }
+    if (TEMPLATE_START.has(t) || t === 'tSep') return this.unwrap(at);
+    buf.splice(at, 1);
+    if (at < this.cur) this.cur--;
+  }
+
+  /** Marker indices [start, ...separators, end] of the template that owns the marker at `at`. */
+  templateMarks(at) {
+    const buf = this.buf;
+    let s = at;
+    if (!TEMPLATE_START.has(buf[at])) {
+      let depth = 0;
+      for (s = at - 1; s >= 0; s--) {
+        if (buf[s] === 'tEnd') depth++;
+        else if (TEMPLATE_START.has(buf[s])) {
+          if (depth === 0) break;
+          depth--;
+        }
+      }
+    }
+    const marks = [s];
+    let depth = 0;
+    for (let i = s + 1; i < buf.length; i++) {
+      const t = buf[i];
+      if (TEMPLATE_START.has(t)) depth++;
+      else if (t === 'tEnd') {
+        if (depth === 0) {
+          marks.push(i);
+          break;
+        }
+        depth--;
+      } else if (t === 'tSep' && depth === 0) marks.push(i);
+    }
+    return marks;
+  }
+
+  /** Remove a template: drop it entirely when empty, otherwise keep its contents inline. */
+  unwrap(at) {
+    const marks = this.templateMarks(at);
+    const s = marks[0];
+    const e = marks[marks.length - 1];
+    const empty = e - s + 1 === marks.length;
+    const drop = (i) => (empty ? i >= s && i <= e : marks.includes(i));
+    let before = 0;
+    for (let i = 0; i < this.cur; i++) if (drop(i)) before++;
+    this.buf = this.buf.filter((_, i) => !drop(i));
+    this.cur -= before;
   }
 
   arrow(key) {
@@ -315,9 +414,76 @@ export class Calculator {
       if (key === 'left' || key === 'right') return this.editLast(key);
       return this.replay(key === 'up' ? -1 : 1);
     }
-    if (key === 'left') this.cur = Math.max(0, this.cur - 1);
-    else if (key === 'right') this.cur = Math.min(this.buf.length, this.cur + 1);
+    const n = this.buf.length;
+    // like natural-display Casios: ◀ at the start wraps to the end and ▶ at the end to the start
+    if (key === 'left') this.cur = this.cur > 0 ? this.cur - 1 : n;
+    else if (key === 'right') this.cur = this.cur < n ? this.cur + 1 : 0;
     else if (this.buf.length === 0) this.replay(key === 'up' ? -1 : 1);
+    else this.vertical(key === 'up' ? -1 : 1);
+  }
+
+  /** ▲▼ inside an expression: numerator <-> denominator, otherwise the nearest position above / below. */
+  vertical(dir) {
+    const { carets } = layoutExpr(this.buf);
+    const here = carets.find((c) => c.index === this.cur);
+    if (!here) return;
+    const nearestIn = (lo, hi) => {
+      let best = null;
+      for (const c of carets) {
+        if (c.index < lo || c.index > hi) continue;
+        if (!best || Math.abs(c.x - here.x) < Math.abs(best.x - here.x)) best = c;
+      }
+      return best;
+    };
+    // fractions: move to the other part of the nearest enclosing fraction
+    const stack = [];
+    for (let i = 0; i < this.cur; i++) {
+      const t = this.buf[i];
+      if (TEMPLATE_START.has(t)) stack.push({ s: i, slot: 0 });
+      else if (t === 'tSep' && stack.length) stack[stack.length - 1].slot++;
+      else if (t === 'tEnd') stack.pop();
+    }
+    for (let k = stack.length - 1; k >= 0; k--) {
+      const { s, slot } = stack[k];
+      const kind = this.buf[s];
+      if (kind !== 'tFrac' && kind !== 'tMixed') continue;
+      const den = kind === 'tFrac' ? 1 : 2;
+      const target = dir > 0 && slot < den ? den : dir < 0 && slot === den ? den - 1 : -1;
+      if (target < 0) continue;
+      const m = this.templateMarks(s);
+      const c = nearestIn(m[target] + 1, m[target + 1]);
+      if (c) this.cur = c.index;
+      return;
+    }
+    // anything else (exponents, roots): nearest position strictly above / below
+    let best = null;
+    let bestScore = Infinity;
+    for (const c of carets) {
+      const dy = (c.base - here.base) * dir;
+      if (dy <= 0) continue;
+      const score = dy * 1000 + Math.abs(c.x - here.x);
+      if (score < bestScore) {
+        bestScore = score;
+        best = c;
+      }
+    }
+    if (best) this.cur = best.index;
+  }
+
+  /** Tap on the display: put the cursor at token gap `index` (null = no position). */
+  tap(index) {
+    if (!this.on || this.await || this.phase === 'menu' || this.phase === 'message') return;
+    this.shift = this.alpha = this.hyp = false;
+    if (this.phase === 'error') {
+      this.phase = 'edit';
+      this.error = null;
+      return;
+    }
+    if (this.phase === 'result') {
+      if (!this.lastTokens || index === null || index === undefined) return;
+      this.editLast('left');
+    }
+    if (index !== null && index !== undefined) this.cur = Math.max(0, Math.min(this.buf.length, index));
   }
 
   /** Re-open the expression behind the shown result for editing (◀ → end, ▶ → start). */
@@ -326,7 +492,7 @@ export class Calculator {
     if (!toks || !toks.length) return;
     this.buf = toks.slice();
     this.cur = key === 'left' ? this.buf.length : 0;
-    this.ins = false;
+    this.ins = true; // natural display: insert by default
     this.phase = 'edit';
     this.hist = -1;
   }
@@ -341,7 +507,8 @@ export class Calculator {
     const h = this.history[i];
     this.hist = i;
     this.phase = 'result';
-    this.upperFixed = tokensText(h.tokens);
+    this.upperTokens = h.tokens;
+    this.upperText = '';
     this.lastTokens = h.tokens;
     this.disp = { ...h.disp };
   }
@@ -367,7 +534,7 @@ export class Calculator {
       this.error = { type: ce.type, pos: ce.pos + offset };
       this.buf = full.slice();
       this.cur = Math.min(this.error.pos, this.buf.length);
-      this.ins = false;
+      this.ins = true; // natural display: insert by default
       return null;
     }
   }
@@ -379,9 +546,10 @@ export class Calculator {
     return { value, mode, engShift: 0, improper: this.dc };
   }
 
-  showResult(upper, value, flags = {}) {
+  showResult(tokens, text, value, flags = {}) {
     this.phase = 'result';
-    this.upperFixed = upper;
+    this.upperTokens = tokens;
+    this.upperText = text;
     this.disp = this.defaultDisp(value, flags);
     this.dtRepeat = null;
   }
@@ -392,7 +560,7 @@ export class Calculator {
     if (!r) return null;
     this.ans = r.value;
     this.lastTokens = tokens.slice();
-    this.showResult(tokensText(tokens) + suffix, r.value, r.flags);
+    this.showResult(tokens.slice(), suffix, r.value, r.flags);
     this.history.push({ tokens: tokens.slice(), disp: { ...this.disp } });
     if (this.history.length > MAX_HISTORY) this.history.shift();
     this.hist = this.history.length - 1;
@@ -422,7 +590,8 @@ export class Calculator {
     if (r.upper === null) {
       this.ans = r.value;
       this.phase = 'result';
-      this.upperFixed = label;
+      this.upperTokens = null;
+      this.upperText = label;
     }
   }
 
@@ -439,12 +608,13 @@ export class Calculator {
       if (r.upper === null) {
         this.ans = r.value;
         this.phase = 'result';
-        this.upperFixed = 'Ans→' + v;
+        this.upperTokens = null;
+        this.upperText = 'Ans→' + v;
       }
     } else {
       const value = this.vars[v];
       this.ans = value;
-      this.showResult(v + '=', value, { frac: isF(value) && !value.isInteger() });
+      this.showResult(['v' + v], '=', value, { frac: isF(value) && !value.isInteger() });
       this.lastTokens = ['v' + v];
       this.hist = -1;
     }
@@ -459,6 +629,15 @@ export class Calculator {
   }
 
   // ---------- result display toggles ----------
+
+  /** S⇔D: fraction <-> decimal (SHIFT: mixed <-> improper). While typing it calculates first. */
+  sdKey(improper) {
+    if (this.phase === 'edit' && this.buf.length) {
+      if (!this.calculate(this.buf)) return;
+    }
+    if (this.phase !== 'result') return;
+    this.toggleFrac(improper);
+  }
 
   toggleFrac(improper) {
     const d = this.disp;
@@ -510,8 +689,8 @@ export class Calculator {
     let start = 0;
     const seps = [];
     buf.forEach((t, i) => {
-      if (t === 'lp' || t === 'pol' || t === 'rec') depth++;
-      else if (t === 'rp') depth = Math.max(0, depth - 1);
+      if (t === 'lp' || t === 'pol' || t === 'rec' || TEMPLATE_START.has(t)) depth++;
+      else if (t === 'rp' || t === 'tEnd') depth = Math.max(0, depth - 1);
       else if (depth === 0 && (t === 'comma' || t === 'semi')) {
         parts.push({ tokens: buf.slice(start, i), offset: start });
         seps.push({ t, i });
@@ -520,7 +699,10 @@ export class Calculator {
     });
     parts.push({ tokens: buf.slice(start), offset: start });
     const pattern = seps.map((s) => s.t).join(' ');
-    const ok = this.mode === 'SD' ? ['', 'semi'].includes(pattern) : ['comma', 'comma semi'].includes(pattern);
+    // the frequency may follow a ";" (fx-82MS style) or a "," (no ";" key on this layout)
+    const ok = this.mode === 'SD'
+      ? ['', 'semi', 'comma'].includes(pattern)
+      : ['comma', 'comma semi', 'comma comma'].includes(pattern);
     if (!ok) {
       this.compute(['comma'], { offset: seps.length ? seps[seps.length - 1].i : buf.length, full: buf });
       return null;
@@ -544,7 +726,7 @@ export class Calculator {
     const list = this.mode === 'SD' ? this.sd : this.reg;
     list.push({ ...entry });
     const n = list.reduce((s, e) => s + e.f, 0);
-    this.showResult('n=', round15(n));
+    this.showResult(null, 'n=', round15(n));
     this.dtRepeat = entry;
     this.lastTokens = null;
     this.hist = -1;
@@ -558,20 +740,16 @@ export class Calculator {
   }
 
   menuPages() {
-    return MENUS[this.menu.id];
+    const m = MENUS[this.menu.id];
+    return Array.isArray(m) ? m : [];
   }
 
   menuKey(key) {
     const { id } = this.menu;
     if (key === 'ac') return this.clearLine();
-    if (key === 'mode') {
-      const i = MODE_PAGES.indexOf(id);
-      this.menu = { ...this.menu, id: MODE_PAGES[(i + 1) % MODE_PAGES.length], page: 0 };
-      return;
-    }
     const pages = this.menuPages();
-    if ((key === 'left' || key === 'right') && pages.length > 1) {
-      const step = key === 'right' ? 1 : -1;
+    if (['left', 'right', 'up', 'down'].includes(key) && pages.length > 1) {
+      const step = key === 'right' || key === 'down' ? 1 : -1;
       this.menu.page = (this.menu.page + step + pages.length) % pages.length;
       return;
     }
@@ -582,20 +760,23 @@ export class Calculator {
   choose(id, d, page) {
     const done = () => this.clearLine();
     switch (id) {
-      case 'mode1':
+      case 'mode':
         if (d >= 1 && d <= 3) {
           this.mode = ['COMP', 'SD', 'REG'][d - 1];
           done();
         }
         return;
-      case 'mode2':
-        if (d >= 1 && d <= 3) {
+      case 'setup':
+        if (this.menu.page === 1) {
+          // page 2: fraction result format
+          if (d === 1 || d === 2) {
+            this.dc = d === 2;
+            done();
+          }
+        } else if (d >= 1 && d <= 3) {
           this.angle = ['D', 'R', 'G'][d - 1];
           done();
-        }
-        return;
-      case 'mode3':
-        if (d >= 1 && d <= 3) this.menu = { ...this.menu, id: ['fix', 'sci', 'norm'][d - 1], page: 0 };
+        } else if (d >= 4 && d <= 6) this.menu = { ...this.menu, id: ['fix', 'sci', 'norm'][d - 4], page: 0 };
         return;
       case 'fix':
       case 'sci':
@@ -607,21 +788,12 @@ export class Calculator {
           done();
         }
         return;
-      case 'mode4':
-        if (d === 1) this.menu = { ...this.menu, id: 'disp', page: 0 };
-        return;
-      case 'disp':
-        if (d === 1 || d === 2) {
-          this.dc = d === 2;
-          done();
-        }
-        return;
       case 'clrComp':
       case 'clrStat':
         return this.clear(d, id === 'clrStat');
       default: {
         // token-inserting menus (DRG▶, S-SUM, S-VAR)
-        const tok = page.tokens && page.tokens[d - 1];
+        const tok = page && page[d - 1] && page[d - 1].token;
         if (!tok) return;
         this.phase = this.menu.prev;
         this.menu = null;
@@ -650,7 +822,7 @@ export class Calculator {
     } else return;
     this.clearLine();
     this.phase = 'message';
-    this.upperFixed = msg;
+    this.upperText = msg;
   }
 
   // ---------- power ----------
@@ -680,25 +852,33 @@ export class Calculator {
       up: replayable && n > 0 && (this.hist < 0 || this.hist > 0),
       down: replayable && this.hist >= 0 && this.hist < n - 1,
     };
-    const view = { on: true, ind, upper: '', cursor: null, insert: this.ins, lower: null };
+    // expr: tokens laid out in natural display; upper: the same as one line of text
+    const view = {
+      on: true, phase: this.phase, ind, upper: '', expr: null, suffix: '', cursor: null, insert: this.ins,
+      lower: null, lines: null,
+    };
     switch (this.phase) {
       case 'edit':
-        view.upper = tokensText(this.buf);
-        view.cursor = tokensText(this.buf.slice(0, this.cur)).length;
+        view.expr = this.buf;
+        view.upper = linearText(this.buf);
+        view.cursor = this.cur;
         view.lower = formatLower(this.disp.value, this.disp, this.fmt);
         break;
       case 'result':
       case 'message':
-        view.upper = this.upperFixed;
+        view.expr = this.phase === 'result' ? this.upperTokens : null;
+        view.suffix = this.upperText;
+        view.upper = (view.expr ? linearText(view.expr) : '') + this.upperText;
         view.lower = formatLower(this.disp.value, this.disp, this.fmt);
         break;
       case 'error':
         view.upper = `${this.error.type} ERROR`;
+        view.lines = [view.upper, '', '[AC] :Cancel', '[◀][▶]:Goto'];
         break;
       case 'menu': {
-        const page = this.menuPages()[this.menu.page];
-        view.upper = page.text;
-        view.lower = page.items.length ? menuLower(page) : null;
+        const m = MENUS[this.menu.id];
+        view.lines = Array.isArray(m) ? menuLines(m[this.menu.page]) : [m.prompt];
+        view.upper = view.lines.join(' ');
         view.more = this.menuPages().length > 1;
         break;
       }

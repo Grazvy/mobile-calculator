@@ -59,6 +59,16 @@ buildKeypad(document.getElementById('keys'), (id) => {
   press(id);
 });
 
+// Tap the display to move the cursor there.
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  haptic();
+  calc.tap(lcd.hitTest(e.clientX, e.clientY));
+  calc.save();
+  restartBlink();
+  render();
+});
+
 window.addEventListener('keydown', (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const k = KEYBOARD[e.key];
@@ -81,6 +91,17 @@ render();
 restartBlink();
 
 if ('serviceWorker' in navigator) {
+  // When an update is installed, the new worker takes over this page (skipWaiting +
+  // clients.claim in sw.js). Reload once so the new files are used straight away
+  // instead of on the next launch. Skipped on the very first install.
+  if (navigator.serviceWorker.controller) {
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloaded) return;
+      reloaded = true;
+      window.location.reload();
+    });
+  }
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(() => {
       /* offline support unavailable (e.g. file://) */

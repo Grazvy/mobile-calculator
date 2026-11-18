@@ -77,14 +77,14 @@ test('functions', () => {
 });
 
 test('fractions stay exact', () => {
-  assert.equal(shown('1 frac 2 add 1 frac 3', { disp: { mode: 'frac' } }), '5⌟6');
-  assert.equal(shown('1 frac 2 add 1 frac 3', { disp: { mode: 'frac', improper: true } }), '5⌟6');
-  assert.equal(shown('3 frac 1 frac 2 add 1', { disp: { mode: 'frac' } }), '4⌟1⌟2');
-  assert.equal(shown('3 frac 1 frac 2 add 1', { disp: { mode: 'frac', improper: true } }), '9⌟2');
+  assert.equal(shown('1 frac 2 add 1 frac 3', { disp: { mode: 'frac' } }), '5/6');
+  assert.equal(shown('1 frac 2 add 1 frac 3', { disp: { mode: 'frac', improper: true } }), '5/6');
+  assert.equal(shown('3 frac 1 frac 2 add 1', { disp: { mode: 'frac' } }), '4 1/2');
+  assert.equal(shown('3 frac 1 frac 2 add 1', { disp: { mode: 'frac', improper: true } }), '9/2');
   assert.equal(shown('1 div 3 mul 3'), '1.');
   assert.equal(shown('0.1 add 0.2'), '0.3');
   assert.equal(shown('1 div 3'), '0.333333333');
-  assert.equal(shown('0.75', { disp: { mode: 'frac' } }), '3⌟4');
+  assert.equal(shown('0.75', { disp: { mode: 'frac' } }), '3/4');
   assert.equal(run('1 frac 2').ctx.flags.frac, true);
 });
 

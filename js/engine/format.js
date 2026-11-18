@@ -105,6 +105,14 @@ export function fractionString(f, improper) {
   return s.length > MAX_DIGITS ? null : { neg, s };
 }
 
+/** Fraction digits for the stacked dot-matrix result: { neg, w (whole or null), n, d }. */
+export function fractionParts(f, improper) {
+  const fs = fractionString(f, improper);
+  if (!fs) return null;
+  const [a, b, c] = fs.s.split('⌟');
+  return c === undefined ? { neg: fs.neg, w: null, n: a, d: b } : { neg: fs.neg, w: a, n: b, d: c };
+}
+
 /** Sexagesimal string "d°m°s.ss"; null when the value is too large to show. */
 export function dmsString(x) {
   const neg = x < 0;
@@ -131,8 +139,9 @@ export function dmsString(x) {
 export function formatLower(value, disp, fmt) {
   const x = round15(toNum(value));
   if (disp.mode === 'frac') {
-    const fs = fractionString(rationalOf(value), disp.improper);
-    if (fs) return { neg: fs.neg, cells: cellsFrom(fs.s, { trailingPoint: false }), exp: null };
+    // drawn as a stacked fraction on the dot matrix; the 7-segment line stays blank
+    const frac = fractionParts(rationalOf(value), disp.improper);
+    if (frac) return { neg: frac.neg, cells: [], exp: null, frac };
   }
   if (disp.mode === 'dms') {
     const ds = dmsString(x);
@@ -152,6 +161,7 @@ export function formatLower(value, disp, fmt) {
 export function lowerText(view) {
   if (!view) return '';
   let s = view.neg ? '-' : '';
+  if (view.frac) return s + (view.frac.w ? `${view.frac.w} ` : '') + `${view.frac.n}/${view.frac.d}`;
   for (const c of view.cells) s += c.ch + (c.dp ? '.' : '');
   if (view.exp) s += `e${view.exp.neg ? '-' : ''}${view.exp.digits}`;
   return s;

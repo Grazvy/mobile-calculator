@@ -4,28 +4,31 @@
 const K = (id, cap, s = '', a = '', cls = '') => ({ id, cap, s, a, cls });
 const sup = (t) => `<sup>${t}</sup>`;
 
+// Order follows the natural-display school calculators (fx-85GT PLUS style).
+const box = '<span class="slot"></span>';
+
 export const TOP_LEFT = [
   K('shift', 'SHIFT', '', '', 'k-mod k-shift'),
   K('alpha', 'ALPHA', '', '', 'k-mod k-alpha'),
-  K('inv', 'x' + sup('−1'), 'x!'),
-  K('ncr', '<i>n</i>C<i>r</i>', '<i>n</i>P<i>r</i>'),
+  K('abs', 'Abs'),
+  K('pol', 'Pol', 'Rec'),
 ];
 
 export const TOP_RIGHT = [
-  K('mode', 'MODE', 'CLR', '', 'k-mod'),
+  K('mode', 'MODE', 'SETUP', '', 'k-mod'),
   K('on', 'ON', '', '', 'k-mod'),
-  K('pol', 'Pol(', 'Rec('),
-  K('cube', 'x' + sup('3'), sup('3') + '√'),
+  K('inv', 'x' + sup('−1'), 'x!'),
+  K('logb', 'log' + `<sub>${box}</sub>` + box),
 ];
 
 export const FN_ROWS = [
   [
-    K('frac', 'a' + sup('b') + '/<sub>c</sub>', 'd/c'),
-    K('sqrt', '√'),
-    K('sq', 'x' + sup('2')),
-    K('pow', '^', sup('x') + '√'),
-    K('log', 'log', '10' + sup('x')),
-    K('ln', 'ln', '<i>e</i>' + sup('x')),
+    K('frac', `<span class="fr">${box}<i></i>${box}</span>`, `${box}<span class="fr fr-s">${box}<i></i>${box}</span>`),
+    K('sqrt', '√' + box, sup('3') + '√' + box),
+    K('sq', 'x' + sup('2'), 'x' + sup('3')),
+    K('pow', 'x' + sup(box), sup(box) + '√' + box),
+    K('log', 'log', '10' + sup(box)),
+    K('ln', 'ln', '<i>e</i>' + sup(box)),
   ],
   [
     K('neg', '(−)', '', 'A'),
@@ -38,18 +41,18 @@ export const FN_ROWS = [
   [
     K('rcl', 'RCL', 'STO'),
     K('eng', 'ENG', '←'),
-    K('lp', '('),
-    K('rp', ')', '', 'X'),
-    K('comma', ',', ';', 'Y'),
+    K('lp', '(', '%'),
+    K('rp', ')', ',', 'X'),
+    K('sd', 'S⇔D', 'a<sup>b</sup>/<sub>c</sub>⇔<sup>d</sup>/<sub>c</sub>', 'Y'),
     K('mplus', 'M+', 'M−', 'M'),
   ],
 ];
 
 export const MAIN_ROWS = [
-  [K('7', '7'), K('8', '8'), K('9', '9'), K('del', 'DEL', 'INS', '', 'k-red'), K('ac', 'AC', 'OFF', '', 'k-red')],
-  [K('4', '4'), K('5', '5'), K('6', '6'), K('mul', '×'), K('div', '÷')],
+  [K('7', '7'), K('8', '8'), K('9', '9', 'CLR'), K('del', 'DEL', 'INS', '', 'k-red'), K('ac', 'AC', 'OFF', '', 'k-red')],
+  [K('4', '4'), K('5', '5'), K('6', '6'), K('mul', '×', '<i>n</i>P<i>r</i>'), K('div', '÷', '<i>n</i>C<i>r</i>')],
   [K('1', '1', 'S-SUM'), K('2', '2', 'S-VAR'), K('3', '3'), K('add', '+'), K('sub', '−')],
-  [K('0', '0', 'Rnd'), K('dot', '•', 'Ran#'), K('exp', 'EXP', 'π'), K('ans', 'Ans', 'DRG▶'), K('eq', '=', '%')],
+  [K('0', '0', 'Rnd'), K('dot', '•', 'Ran#'), K('exp', '×10' + sup('x'), 'π', '<i>e</i>'), K('ans', 'Ans', 'DRG▶'), K('eq', '=')],
 ];
 
 const REPEAT = new Set(['left', 'right', 'up', 'down', 'del']);
@@ -156,10 +159,10 @@ export function buildKeypad(root, onKey) {
 /** Physical keyboard support (desktop testing / Bluetooth keyboards). */
 export const KEYBOARD = {
   0: '0', 1: '1', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9: '9',
-  '.': 'dot', ',': 'comma', '+': 'add', '-': 'sub', '*': 'mul', x: 'mul', '/': 'div',
+  '.': 'dot', ',': ['shift', 'rp'], '+': 'add', '-': 'sub', '*': 'mul', x: 'mul', '/': 'div',
   '^': 'pow', '(': 'lp', ')': 'rp', Enter: 'eq', '=': 'eq', Backspace: 'del',
   Delete: 'ac', Escape: 'ac', ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up',
   ArrowDown: 'down', s: 'sin', c: 'cos', t: 'tan', l: 'log', n: 'ln', r: 'sqrt',
-  e: 'exp', a: 'ans', m: 'mode',
-  '!': ['shift', 'inv'], p: ['shift', 'exp'], '%': ['shift', 'eq'],
+  e: 'exp', a: 'ans', m: 'mode', f: 'frac', d: 'sd',
+  '!': ['shift', 'inv'], p: ['shift', 'exp'], '%': ['shift', 'lp'],
 };

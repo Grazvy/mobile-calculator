@@ -2,7 +2,7 @@
 // order of operations (highest priority first):
 //   1. Pol( Rec( and parentheses
 //   2. postfix functions: x² x³ x⁻¹ x! °'" % angle-unit marks x̂ ŷ
-//   3. ^  ˣ√ (left to right)
+//   3. ^  ˣ√  log_b (left to right)
 //   4. a b/c fraction entry
 //   5. implied multiplication before π, variables, Ans, "(" and Pol(/Rec(
 //   6. prefix functions: (-) √ ³√ log ln 10^ e^ sin cos tan ... Rnd
@@ -100,7 +100,7 @@ export function parse(lx) {
 
   function power() {
     let n = postfix();
-    while (is('pow') || is('xrt')) {
+    while (is('pow') || is('xrt') || is('logb')) {
       const op = next();
       n = { type: 'bin', op: op.t, a: n, b: powerOperand(), pos: op.pos };
     }

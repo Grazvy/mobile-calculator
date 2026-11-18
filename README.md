@@ -4,9 +4,9 @@ Here is my own, everyday calcualtor app to use on mobile.
 
 I made it because, the built-in calculator apps don't have the intuitive Casio design, known from school and the third-party alternatives are full of ads.
 
-**Open it:** https://mobile-calculator.netlify.app/
+**Available at:** https://mobile-calculator.netlify.app/
 
-Usage: Add the website as a shortcut widget in your (android) phone. It will work like an app also offline, once it's loaded.
+**Usage:** Add the website as a shortcut widget in your (android) phone. It will work like an app also offline, once it's loaded.
 
 
 ## More
