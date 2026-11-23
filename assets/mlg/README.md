@@ -33,4 +33,4 @@ Use PNG or GIF with a transparent background. A missing picture is skipped. The 
 - Keep files small (under about 200 KB). Embedded cover art only adds download size: `damn-son.mp3` carries about 150 KB of it. `ffmpeg -i in.mp3 -map 0:a -c copy out.mp3` strips it.
 - If you replace a clip, check the times and lengths in the `SOUNDS` table in `js/easter.js`. Each entry is tuned to where the pauses fall in the current files.
 
-The clips and pictures are not in the service worker's precache list, because one missing file would break the offline install. They're cached the first time they play, and work offline after that. On iPhones the hardware silent switch mutes them.
+The clips and pictures are not in the service worker's precache list, because one missing file would break the offline install. They're downloaded and decoded in the background a few seconds after the app opens (skipped when the browser asks to save data), and cached for offline use. On iPhones the hardware silent switch mutes them.

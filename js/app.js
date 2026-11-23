@@ -166,3 +166,20 @@ if ('serviceWorker' in navigator) {
     });
   });
 }
+
+// Easter egg: download and decode its clips and pictures in the background once the app has
+// settled, so 58008 = starts instantly. Skipped when the browser asks to save data; typing
+// 58008 still preloads them then.
+function warmEasterEgg() {
+  const c = navigator.connection;
+  if (c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || ''))) return;
+  preloadEasterEgg();
+}
+window.addEventListener('load', () => {
+  // wait for the service worker, so the files go through it and are cached for offline use
+  const sw = 'serviceWorker' in navigator ? navigator.serviceWorker.ready : Promise.resolve();
+  Promise.race([sw, new Promise((r) => setTimeout(r, 10000))]).then(() => {
+    if (window.requestIdleCallback) window.requestIdleCallback(warmEasterEgg, { timeout: 5000 });
+    else setTimeout(warmEasterEgg, 3000);
+  });
+});

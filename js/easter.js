@@ -176,6 +176,7 @@ export function scheduleClip(ac, dest, entry, info, zero) {
 
 let ctx = null;
 let master = null;
+let offline = null;
 const clips = new Map(); // clip name -> Promise<measured clip | null>
 const images = new Map(); // file -> preloaded Image (keeps it in the memory cache)
 
@@ -189,11 +190,23 @@ function audioContext() {
   return ctx;
 }
 
+/**
+ * Clips are decoded with a tiny offline context, so they can be prepared in the background
+ * before any tap: the live AudioContext is only created on "=" (browsers want a user gesture).
+ * The buffers play fine in the live context, which resamples them if its rate differs.
+ */
+function decoder() {
+  const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!offline && OAC) offline = new OAC(2, 1, 44100);
+  return offline;
+}
+
 function clip(name) {
   if (!clips.has(name)) {
-    const p = fetch(CLIP_DIR + name + '.mp3')
-      .then((res) => (res.ok ? res.arrayBuffer() : null))
-      .then((data) => (data ? ctx.decodeAudioData(data) : null))
+    const dec = decoder();
+    const p = (dec ? fetch(CLIP_DIR + name + '.mp3') : Promise.resolve(null))
+      .then((res) => (res && res.ok ? res.arrayBuffer() : null))
+      .then((data) => (data ? dec.decodeAudioData(data) : null))
       .then((buf) => (buf ? measureClip(buf) : null))
       .catch(() => null);
     clips.set(name, p);
@@ -201,7 +214,11 @@ function clip(name) {
   return clips.get(name);
 }
 
-/** Start fetching and decoding the clips (call once 58008 has been typed, before =). */
+/**
+ * Fetch and decode every clip and picture, keeping them in memory. Safe to call any time and
+ * as often as you like: the app calls it in the background after start-up and again once
+ * 58008 has been typed (in case the background preload was skipped to save data).
+ */
 export function preloadEasterEgg() {
   for (const f of IMAGES) {
     if (images.has(f)) continue;
@@ -209,7 +226,6 @@ export function preloadEasterEgg() {
     img.src = CLIP_DIR + f;
     images.set(f, img);
   }
-  if (!audioContext()) return;
   for (const s of SOUNDS) clip(s.clip);
 }
 
