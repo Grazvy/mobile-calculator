@@ -27,7 +27,7 @@ export function isEasterEgg(tokens) {
  * Voice lines never overlap each other; effects sit in the pauses of the voices.
  */
 export const SOUNDS = [
-  { t: 0, clip: 'dubstep', vol: 1.25, kind: 'bed' },
+  { t: 0, clip: 'dubstep', vol: 1.5, kind: 'bed' },
   { t: 0, clip: 'airhorn', vol: 1, len: 0.45, kind: 'sfx' },
   { t: 0.42, clip: 'damn-son', vol: 1, len: 2.12, kind: 'voice' },
   { t: 0.72, clip: 'sniper', vol: 1, len: 0.25, kind: 'sfx' }, // the crack fills the pause after "damn son"
@@ -60,15 +60,15 @@ const cue = (name, n = 0) => SOUNDS.filter((e) => e.clip === name)[n].t;
 // Pictures from assets/mlg/. Flyers are thrown across the screen; w = width range in vmin
 // (tall pictures get a narrower range so they all look about the same size).
 const FLYERS = {
-  'd-chip': { file: 'd-chip.png', w: [13, 19] },
-  'd-package': { file: 'd-package.png', w: [14, 18] },
-  'mtn-d': { file: 'mtn-d.png', w: [10, 13] },
-  illum: { file: 'illum.png', w: [15, 21] },
+  'd-chip': { file: 'd-chip.webp', w: [13, 19] },
+  'd-package': { file: 'd-package.webp', w: [14, 18] },
+  'mtn-d': { file: 'mtn-d.webp', w: [10, 13] },
+  illum: { file: 'illum.webp', w: [15, 21] },
 };
 // order they are thrown in: mostly chips
 const THROWS = ['d-chip', 'mtn-d', 'd-package', 'd-chip', 'illum', 'mtn-d', 'd-chip', 'd-package', 'illum'];
 // dancers on the sides of the screen
-const DANCERS = { left: 's-dog.gif', right: 'mlg-frog.gif' };
+const DANCERS = { left: 's-dog.webp', right: 'mlg-frog.webp' };
 const IMAGES = [...Object.values(FLYERS).map((f) => f.file), ...Object.values(DANCERS)];
 
 // ---------- audio ----------
